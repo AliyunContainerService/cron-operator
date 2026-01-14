@@ -14,10 +14,19 @@ spec:
     singular: cron
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[-1:].type
+      name: State
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Cron is the Schema for the crons API
+        description: |-
+          Cron is the Schema for the crons API.
+          It represents a scheduled job that runs workloads at specified times using cron expressions.
         properties:
           apiVersion:
             description: |-
@@ -37,85 +46,194 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of Cron
+            description: Spec defines the desired state of Cron.
             properties:
-              foo:
-                description: foo is an example field of Cron. Edit cron_types.go to
-                  remove/update
+              concurrencyPolicy:
+                default: Allow
+                description: |-
+                  ConcurrencyPolicy specifies how to treat concurrent executions of a job.
+                  Valid values are:
+                  - "Allow" (default): allows cron jobs to run concurrently.
+                  - "Forbid": forbids concurrent runs, skipping next run if previous run hasn't finished yet.
+                  - "Replace": cancels currently running job and replaces it with a new one.
+                enum:
+                - Allow
+                - Forbid
+                - Replace
                 type: string
+              deadline:
+                description: |-
+                  Deadline is the optional deadline timestamp after which the cron job will stop scheduling new executions.
+                  If specified, no new jobs will be created after this time.
+                format: date-time
+                type: string
+              historyLimit:
+                description: |-
+                  HistoryLimit specifies the number of finished job history records to retain.
+                  This is a pointer to distinguish between explicit zero and not specified.
+                  If not set, a default value will be used by the controller.
+                format: int32
+                type: integer
+              schedule:
+                description: |-
+                  Schedule specifies the cron schedule in standard cron format.
+                  For example: "0 0 * * *" for daily at midnight, "*/5 * * * *" for every 5 minutes.
+                  See https://en.wikipedia.org/wiki/Cron for more details.
+                type: string
+              suspend:
+                description: |-
+                  Suspend tells the controller to suspend subsequent executions.
+                  It does not apply to already started executions.
+                  Defaults to false.
+                type: boolean
+              template:
+                description: Template specifies the workload template that will be
+                  created when executing a cron job.
+                properties:
+                  apiVersion:
+                    description: |-
+                      APIVersion defines the versioned schema of this representation of an object.
+                      Servers should convert recognized schemas to the latest internal value, and
+                      may reject unrecognized values.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+                    type: string
+                  kind:
+                    description: |-
+                      Kind is a string value representing the REST resource this object represents.
+                      Servers may infer this from the endpoint the client submits requests to.
+                      Cannot be updated.
+                      In CamelCase.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                    type: string
+                  workload:
+                    description: |-
+                      Workload contains the specification of the desired workload to be scheduled.
+                      It can be any Kubernetes workload type (e.g., Job, Deployment, Pod).
+                      The workload is stored as RawExtension to support different resource types.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+            required:
+            - schedule
+            - template
             type: object
           status:
-            description: status defines the observed state of Cron
+            description: Status defines the observed state of Cron.
             properties:
-              conditions:
-                description: |-
-                  conditions represent the current state of the Cron resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+              active:
+                description: Active contains a list of references to currently running
+                  jobs created by this cron.
                 items:
-                  description: Condition contains details for one aspect of the current
-                    state of this API Resource.
+                  description: ObjectReference contains enough information to let
+                    you inspect or modify the referred object.
                   properties:
-                    lastTransitionTime:
+                    apiVersion:
+                      description: API version of the referent.
+                      type: string
+                    fieldPath:
                       description: |-
-                        lastTransitionTime is the last time the condition transitioned from one status to another.
-                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                        If referring to a piece of an object instead of an entire object, this string
+                        should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                        For example, if the object reference is to a container within a pod, this would take on a value like:
+                        "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                        the event) or if no container name is specified "spec.containers[2]" (container with
+                        index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                        referencing a part of an object.
+                      type: string
+                    kind:
+                      description: |-
+                        Kind of the referent.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                      type: string
+                    name:
+                      description: |-
+                        Name of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      type: string
+                    namespace:
+                      description: |-
+                        Namespace of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                      type: string
+                    resourceVersion:
+                      description: |-
+                        Specific resourceVersion to which this reference is made, if any.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                      type: string
+                    uid:
+                      description: |-
+                        UID of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                type: array
+                x-kubernetes-list-type: atomic
+              history:
+                description: |-
+                  History is a list of previously scheduled cron jobs with their execution records.
+                  This provides an audit trail of job executions.
+                items:
+                  description: CronHistory represents a historical record of a scheduled
+                    cron job execution.
+                  properties:
+                    created:
+                      description: Created is the timestamp when the job was created.
                       format: date-time
                       type: string
-                    message:
-                      description: |-
-                        message is a human readable message indicating details about the transition.
-                        This may be an empty string.
-                      maxLength: 32768
+                    finished:
+                      description: Finished is the timestamp when the job finished
+                        execution (either succeeded or failed).
+                      format: date-time
                       type: string
-                    observedGeneration:
+                    object:
                       description: |-
-                        observedGeneration represents the .metadata.generation that the condition was set based upon.
-                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
-                        with respect to the current state of the instance.
-                      format: int64
-                      minimum: 0
-                      type: integer
-                    reason:
-                      description: |-
-                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
-                        Producers of specific condition types may define expected values and meanings for this field,
-                        and whether the values are considered a guaranteed API.
-                        The value should be a CamelCase string.
-                        This field may not be empty.
-                      maxLength: 1024
-                      minLength: 1
-                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
-                      type: string
+                        Object is the reference to the historical scheduled cron job.
+                        It contains the kind, name, and API group of the workload.
+                      properties:
+                        apiGroup:
+                          description: |-
+                            APIGroup is the group for the resource being referenced.
+                            If APIGroup is not specified, the specified Kind must be in the core API group.
+                            For any other third-party types, APIGroup is required.
+                          type: string
+                        kind:
+                          description: Kind is the type of resource being referenced
+                          type: string
+                        name:
+                          description: Name is the name of resource being referenced
+                          type: string
+                      required:
+                      - kind
+                      - name
+                      type: object
+                      x-kubernetes-map-type: atomic
                     status:
-                      description: status of the condition, one of True, False, Unknown.
+                      description: Status is the final status of the job when it finished
+                        execution.
                       enum:
-                      - "True"
-                      - "False"
-                      - Unknown
+                      - Created
+                      - Running
+                      - Restarting
+                      - Succeeded
+                      - Failed
                       type: string
-                    type:
-                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
-                      maxLength: 316
-                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                    uid:
+                      description: UID is the unique identifier of the scheduled job.
                       type: string
                   required:
-                  - lastTransitionTime
-                  - message
-                  - reason
+                  - object
                   - status
-                  - type
+                  - uid
                   type: object
                 type: array
-                x-kubernetes-list-map-keys:
-                - type
-                x-kubernetes-list-type: map
+                x-kubernetes-list-type: atomic
+              lastScheduleTime:
+                description: |-
+                  LastScheduleTime records the last time a job was successfully scheduled.
+                  This is used to determine the next execution time.
+                format: date-time
+                type: string
             type: object
         required:
         - spec

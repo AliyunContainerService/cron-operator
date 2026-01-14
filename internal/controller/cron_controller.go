@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubedliov1alpha1 "github.com/AliyunContainerService/cron-operator/api/v1alpha1"
+	"github.com/AliyunContainerService/cron-operator/api/v1alpha1"
 )
 
 // CronReconciler reconciles a Cron object
@@ -57,7 +57,7 @@ func (r *CronReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 // SetupWithManager sets up the controller with the Manager.
 func (r *CronReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubedliov1alpha1.Cron{}).
+		For(&v1alpha1.Cron{}).
 		Named("cron").
 		Complete(r)
 }

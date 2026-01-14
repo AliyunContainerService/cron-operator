@@ -21,13 +21,13 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	kubedliov1alpha1 "github.com/AliyunContainerService/cron-operator/api/v1alpha1"
+	"github.com/AliyunContainerService/cron-operator/api/v1alpha1"
 )
 
 var _ = Describe("Cron Controller", func() {
@@ -40,13 +40,13 @@ var _ = Describe("Cron Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		cron := &kubedliov1alpha1.Cron{}
+		cron := &v1alpha1.Cron{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Cron")
 			err := k8sClient.Get(ctx, typeNamespacedName, cron)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &kubedliov1alpha1.Cron{
+				resource := &v1alpha1.Cron{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,7 +59,7 @@ var _ = Describe("Cron Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &kubedliov1alpha1.Cron{}
+			resource := &v1alpha1.Cron{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
