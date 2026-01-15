@@ -1,18 +1,50 @@
 # cron-operator
-// TODO(user): Add simple overview of use/purpose
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+A Kubernetes operator that enables cron-based scheduling for machine learning training workloads using standard cron expressions.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+The cron-operator extends Kubernetes with custom scheduling capabilities for ML training workloads. Built on the Operator pattern and Custom Resource Definitions (CRDs), it allows users to schedule Kubeflow training jobs (PyTorchJob, TFJob) using familiar cron syntax. The operator handles job lifecycle management, including concurrency control, history retention, and status tracking, providing a robust solution for automated ML training pipelines.
+
+### Key Features
+
+- **Cron-based Scheduling**: Schedule ML training workloads using standard cron expressions (e.g., `*/5 * * * *` for every 5 minutes)
+- **Multiple Workload Support**: Compatible with Kubeflow PyTorchJob and TFJob resources
+- **Flexible Concurrency Policies**:
+  - `Allow`: Run jobs concurrently without restrictions
+  - `Forbid`: Skip new executions if previous job is still running
+  - `Replace`: Cancel running job and start new execution
+- **History Management**: Configurable retention of finished job records with automatic cleanup
+- **Execution Control**: Suspend scheduling or set deadline timestamps for time-bound operations
+- **Status Tracking**: Monitor active jobs and view historical execution records
+- **Kubernetes-native**: Fully integrated with Kubernetes RBAC, events, and API conventions
+
+### Architecture
+
+The cron-operator follows the Kubernetes Operator pattern:
+
+1. **Custom Resource Definition (CRD)**: The `Cron` CRD defines the desired scheduling configuration, including cron schedule, workload template, and policies
+2. **Controller**: A reconciliation loop monitors Cron resources and manages workload lifecycle:
+   - Calculates next execution time based on cron schedule
+   - Creates workload instances from templates at scheduled times
+   - Enforces concurrency policies and manages active workloads
+   - Updates status with execution history and active job references
+3. **Workload Templates**: Generic template mechanism supports any Kubernetes workload type through `runtime.RawExtension`
+4. **Status Management**: Maintains lists of active jobs and historical records with timestamps and final states
 
 ## Getting Started
 
 ### Prerequisites
+
 - go version v1.24.6+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
 
 ### To Deploy on the cluster
+
 **Build and push your image to the location specified by `IMG`:**
 
 ```sh
@@ -48,6 +80,7 @@ kubectl apply -k config/samples/
 >**NOTE**: Ensure that the samples has default values to test it out.
 
 ### To Uninstall
+
 **Delete the instances (CRs) from the cluster:**
 
 ```sh
@@ -83,7 +116,7 @@ file in the dist directory. This file contains all the resources built
 with Kustomize, which are necessary to install this project without its
 dependencies.
 
-2. Using the installer
+1. Using the installer
 
 Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
 the project, i.e.:
@@ -100,7 +133,7 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/cron-operator/<tag or b
 kubebuilder edit --plugins=helm/v2-alpha
 ```
 
-2. See that a chart was generated under 'dist/chart', and users
+1. See that a chart was generated under 'dist/chart', and users
 can obtain this solution from there.
 
 **NOTE:** If you change the project, you need to update the Helm Chart
@@ -110,26 +143,7 @@ the '--force' flag and manually ensure that any custom configuration
 previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
 is manually re-applied afterwards.
 
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
