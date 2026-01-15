@@ -17,14 +17,12 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
-# Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
+FROM registry-cn-hangzhou.ack.aliyuncs.com/dev/debian:12-slim-update
 
 WORKDIR /
 
 COPY --from=builder /workspace/manager .
 
-USER 65532:6553O
+USER 65534:65534
 
 ENTRYPOINT ["/manager"]
