@@ -61,6 +61,8 @@ func init() {
 func NewStartCommand() *cobra.Command {
 	var (
 		maxConcurrentReconciles                          int
+		qps                                              float32
+		burst                                            int
 		metricsAddr                                      string
 		metricsCertPath, metricsCertName, metricsCertKey string
 		webhookCertPath, webhookCertName, webhookCertKey string
@@ -147,7 +149,11 @@ func NewStartCommand() *cobra.Command {
 				metricsServerOptions.KeyName = metricsCertKey
 			}
 
-			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+			cfg := ctrl.GetConfigOrDie()
+			cfg.QPS = qps
+			cfg.Burst = burst
+
+			mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 				Scheme:                 scheme,
 				Metrics:                metricsServerOptions,
 				WebhookServer:          webhookServer,
@@ -209,6 +215,8 @@ func NewStartCommand() *cobra.Command {
 	cmd.Flags().IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 10,
 		"The maximum number of concurrent reconciles for controller.",
 	)
+	cmd.Flags().Float32Var(&qps, "qps", 30, "Maximum QPS to the Kubernetes API server from this client.")
+	cmd.Flags().IntVar(&burst, "burst", 50, "Maximum burst for throttle.")
 	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	cmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
