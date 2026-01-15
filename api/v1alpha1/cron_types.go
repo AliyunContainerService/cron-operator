@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	kubeflowv1 "github.com/kubeflow/training-operator/pkg/apis/kubeflow.org/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -29,8 +30,10 @@ func init() {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.conditions[-1:].type`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:printcolumn:name="SCHEDULE",type=string,JSONPath=`.spec.schedule`
+// +kubebuilder:printcolumn:name="SUSPEND",type=boolean,JSONPath=`.spec.suspend`
+// +kubebuilder:printcolumn:name="LAST_SCHEDULE",type=string,JSONPath=`.status.lastScheduleTime`
+// +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Cron is the Schema for the crons API.
 // It represents a scheduled job that runs workloads at specified times using cron expressions.
@@ -101,7 +104,7 @@ type CronSpec struct {
 	// This is a pointer to distinguish between explicit zero and not specified.
 	// If not set, a default value will be used by the controller.
 	// +optional
-	HistoryLimit *int32 `json:"historyLimit,omitempty"`
+	HistoryLimit *int `json:"historyLimit,omitempty"`
 }
 
 // CronTemplateSpec describes a template for launching a specific workload.
@@ -157,8 +160,8 @@ type CronStatus struct {
 // CronHistory represents a historical record of a scheduled cron job execution.
 type CronHistory struct {
 	// UID is the unique identifier of the scheduled job.
-	// +required
-	UID types.UID `json:"uid"`
+	// +optional
+	UID types.UID `json:"uid,omitempty"`
 
 	// Object is the reference to the historical scheduled cron job.
 	// It contains the kind, name, and API group of the workload.
@@ -167,7 +170,7 @@ type CronHistory struct {
 
 	// Status is the final status of the job when it finished execution.
 	// +required
-	Status JobConditionType `json:"status"`
+	Status kubeflowv1.JobConditionType `json:"status"`
 
 	// Created is the timestamp when the job was created.
 	// +optional
@@ -177,64 +180,3 @@ type CronHistory struct {
 	// +optional
 	Finished *metav1.Time `json:"finished,omitempty"`
 }
-
-// +k8s:deepcopy-gen=true
-
-// JobCondition describes the state of a job at a certain point in time.
-type JobCondition struct {
-	// Type of job condition.
-	// +required
-	Type JobConditionType `json:"type"`
-
-	// Status of the condition, one of True, False, Unknown.
-	// +required
-	Status corev1.ConditionStatus `json:"status"`
-
-	// Reason is a brief machine-readable string that gives the reason for the condition's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-
-	// Message is a human-readable message indicating details about the last transition.
-	// +optional
-	Message string `json:"message,omitempty"`
-
-	// LastUpdateTime is the last time this condition was updated.
-	// +optional
-	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
-
-	// LastTransitionTime is the last time the condition transitioned from one status to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
-}
-
-// JobConditionType defines all possible types of job status conditions.
-// +kubebuilder:validation:Enum=Created;Running;Restarting;Succeeded;Failed
-type JobConditionType string
-
-const (
-	// JobCreated indicates the job has been accepted by the system.
-	// One or more of the pods or services may not have been started yet.
-	// This includes the time before pods are scheduled and launched.
-	JobCreated JobConditionType = "Created"
-
-	// JobRunning indicates all sub-resources (e.g., services, pods) of this job
-	// have been successfully scheduled and launched.
-	// The job is running without errors.
-	JobRunning JobConditionType = "Running"
-
-	// JobRestarting indicates one or more sub-resources (e.g., services, pods) of this job
-	// have failed but may be restarted according to the restart policy
-	// specified by the user in the PodTemplateSpec.
-	// The job is in a pending or transitional state.
-	JobRestarting JobConditionType = "Restarting"
-
-	// JobSucceeded indicates all sub-resources (e.g., services, pods) of this job
-	// have terminated successfully.
-	// The job has completed without errors.
-	JobSucceeded JobConditionType = "Succeeded"
-
-	// JobFailed indicates one or more sub-resources (e.g., services, pods) of this job
-	// have failed with no possibility of restarting.
-	// The job has failed its execution.
-	JobFailed JobConditionType = "Failed"
-)

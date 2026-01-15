@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -32,53 +32,54 @@ import (
 
 var _ = Describe("Cron Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const (
+			name      = "cron-test"
+			namespace = "default"
+		)
 
 		ctx := context.Background()
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
+		key := types.NamespacedName{Namespace: namespace, Name: name}
 		cron := &v1alpha1.Cron{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Cron")
-			err := k8sClient.Get(ctx, typeNamespacedName, cron)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &v1alpha1.Cron{
+			if err := k8sClient.Get(ctx, key, cron); err != nil && apierrors.IsNotFound(err) {
+				cron := &v1alpha1.Cron{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
+						Name:      name,
+						Namespace: namespace,
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: v1alpha1.CronSpec{
+						Schedule:          "*/5 * * * *",
+						ConcurrencyPolicy: v1alpha1.ConcurrentPolicyForbid,
+						Template: v1alpha1.CronTemplateSpec{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "kubeflow.org/v1",
+								Kind:       "PyTorchJob",
+							},
+						},
+					},
 				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				Expect(k8sClient.Create(ctx, cron)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &v1alpha1.Cron{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+			cron := &v1alpha1.Cron{}
+			Expect(k8sClient.Get(ctx, key, cron)).To(Succeed())
 
 			By("Cleanup the specific resource instance Cron")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, cron)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &CronReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
+			r := NewCronReconciler(k8sClient.Scheme(), k8sClient, k8sClient, nil)
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+			_, err := r.Reconcile(ctx, reconcile.Request{
+				NamespacedName: key,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
 	})
 })

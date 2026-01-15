@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: crons.kubedl.io
+  name: crons.apps.kubedl.io
 spec:
-  group: kubedl.io
+  group: apps.kubedl.io
   names:
     kind: Cron
     listKind: CronList
@@ -15,11 +15,17 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.conditions[-1:].type
-      name: State
+    - jsonPath: .spec.schedule
+      name: SCHEDULE
+      type: string
+    - jsonPath: .spec.suspend
+      name: SUSPEND
+      type: boolean
+    - jsonPath: .status.lastScheduleTime
+      name: LAST_SCHEDULE
       type: string
     - jsonPath: .metadata.creationTimestamp
-      name: Age
+      name: AGE
       type: date
     name: v1alpha1
     schema:
@@ -72,7 +78,6 @@ spec:
                   HistoryLimit specifies the number of finished job history records to retain.
                   This is a pointer to distinguish between explicit zero and not specified.
                   If not set, a default value will be used by the controller.
-                format: int32
                 type: integer
               schedule:
                 description: |-
@@ -211,12 +216,6 @@ spec:
                     status:
                       description: Status is the final status of the job when it finished
                         execution.
-                      enum:
-                      - Created
-                      - Running
-                      - Restarting
-                      - Succeeded
-                      - Failed
                       type: string
                     uid:
                       description: UID is the unique identifier of the scheduled job.
@@ -224,7 +223,6 @@ spec:
                   required:
                   - object
                   - status
-                  - uid
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic

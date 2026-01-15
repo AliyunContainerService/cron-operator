@@ -6,4 +6,102 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: cron-sample
 spec:
-  # TODO(user): Add fields here
+  # Cron schedule in standard cron format (every 5 minutes)
+  schedule: "*/5 * * * *"
+  
+  # Concurrency policy: Allow, Forbid, or Replace
+  concurrencyPolicy: Forbid
+  
+  # Number of successful finished jobs to retain
+  historyLimit: 3
+  
+  # Suspend scheduling (optional)
+  # suspend: false
+  
+  # Deadline for stopping scheduling (optional)
+  # deadline: "2026-12-31T23:59:59Z"
+  
+  # Template for the workload to be scheduled
+  template:
+    apiVersion: kubeflow.org/v1
+    kind: PyTorchJob
+    workload:
+      metadata:
+        name: pytorch-training
+      spec:
+        pytorchReplicaSpecs:
+          Master:
+            replicas: 1
+            restartPolicy: OnFailure
+            template:
+              spec:
+                containers:
+                - name: pytorch
+                  image: pytorch/pytorch:latest
+                  command:
+                  - python
+                  - "-c"
+                  - "print('Hello from PyTorchJob')"
+          Worker:
+            replicas: 2
+            restartPolicy: OnFailure
+            template:
+              spec:
+                containers:
+                - name: pytorch
+                  image: pytorch/pytorch:latest
+                  command:
+                  - python
+                  - "-c"
+                  - "print('Worker training...')"
+---
+apiVersion: kubedl.io/v1alpha1
+kind: Cron
+metadata:
+  labels:
+    app.kubernetes.io/name: cron-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: cron-tfjob-sample
+spec:
+  # Cron schedule in standard cron format (every hour)
+  schedule: "0 * * * *"
+  
+  # Allow concurrent runs
+  concurrencyPolicy: Allow
+  
+  # Keep last 5 successful jobs
+  historyLimit: 5
+  
+  # Template for TFJob
+  template:
+    apiVersion: kubeflow.org/v1
+    kind: TFJob
+    workload:
+      metadata:
+        name: tf-training
+      spec:
+        tfReplicaSpecs:
+          Chief:
+            replicas: 1
+            restartPolicy: OnFailure
+            template:
+              spec:
+                containers:
+                - name: tensorflow
+                  image: tensorflow/tensorflow:latest
+                  command:
+                  - python
+                  - "-c"
+                  - "print('Hello from TFJob Chief')"
+          Worker:
+            replicas: 3
+            restartPolicy: OnFailure
+            template:
+              spec:
+                containers:
+                - name: tensorflow
+                  image: tensorflow/tensorflow:latest
+                  command:
+                  - python
+                  - "-c"
+                  - "print('Worker training...')"

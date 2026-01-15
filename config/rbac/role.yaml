@@ -30,3 +30,23 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - pytorchjobs
+  - tfjobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - pytorchjobs/status
+  - tfjobs/status
+  verbs:
+  - get
