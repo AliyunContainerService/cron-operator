@@ -43,6 +43,9 @@ leaderElection:
   # -- Whether to enable leader election.
   enable: true
 
+# -- Maximum number of concurrent reconciles.
+maxConcurrentReconciles: 10
+
 # -- Whether to use host timezone in the container.
 useHostTimezone: false
 

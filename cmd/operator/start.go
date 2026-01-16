@@ -206,7 +206,9 @@ func NewStartCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 10, "The maximum number of concurrent reconciles for controller.")
+	cmd.Flags().IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 10,
+		"The maximum number of concurrent reconciles for controller.",
+	)
 	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	cmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")

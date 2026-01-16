@@ -44,6 +44,9 @@ spec:
         args:
         - start
         - --leader-elect={{ .Values.leaderElection.enable }}
+        {{- with .Values.maxConcurrentReconciles }}
+        - --max-concurrent-reconciles={{ . }}
+        {{- end }}
         ports:
         - name: metrics
           containerPort: 8080
