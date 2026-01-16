@@ -83,7 +83,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run unit tests
+      - name: Run Go unit tests
         run: |
           make test
 
@@ -92,6 +92,10 @@ jobs:
         with:
           name: coverage-report
           path: cover.out
+
+      - name: Run Helm unit tests
+        run: |
+          make helm-unittest
 
   e2e-test:
     needs:
