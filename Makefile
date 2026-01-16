@@ -152,6 +152,10 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 helm-unittest: helm-unittest-plugin ## Run Helm chart unittests.
 	$(HELM) unittest charts/cron-operator --strict --file "tests/**/*_test.yaml"
 
+.PHONY: helm-docs
+helm-docs: helm-docs-plugin ## Generates markdown documentation for helm charts from requirements and values files.
+	$(HELM_DOCS) --sort-values-order=file
+
 ##@ Deployment
 
 ifndef ignore-not-found
@@ -192,12 +196,14 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
+HELM_DOCS ?= $(LOCALBIN)/helm-docs
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 HELM_VERSION ?= v3.19.5
 HELM_UNITTEST_VERSION ?= 0.8.2
+HELM_DOCS_VERSION ?= v1.14.2
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -249,6 +255,11 @@ helm-unittest-plugin: helm ## Download helm unittest plugin locally if necessary
 		echo "Installing helm unittest plugin"; \
 		$(HELM) plugin install https://github.com/helm-unittest/helm-unittest.git --version $(HELM_UNITTEST_VERSION); \
 	fi
+
+.PHONY: helm-docs-plugin
+helm-docs-plugin: $(HELM_DOCS) ## Download helm-docs plugin locally if necessary.
+$(HELM_DOCS): $(LOCALBIN)
+	$(call go-install-tool,$(HELM_DOCS),github.com/norwoodj/helm-docs/cmd/helm-docs,$(HELM_DOCS_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
