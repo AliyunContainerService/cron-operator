@@ -47,7 +47,7 @@ spec:
         - --zap-encoder={{ . }}
         {{- end }}
         {{- with .Values.logLevel }}
-        - --zap-level={{ . }}
+        - --zap-log-level={{ . }}
         {{- end }}
         - --leader-elect={{ .Values.leaderElection.enable }}
         {{- with .Values.maxConcurrentReconciles }}
