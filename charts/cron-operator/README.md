@@ -16,6 +16,7 @@ A Kubernetes operator that enables cron-based scheduling for machine learning tr
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
 | image.pullSecrets | list | `[]` | Image pull secrets. |
 | replicas | int | `1` | Number of replicas. |
+| logEncoder | string | `"console"` | Configure the encoder of logging, can be one of `console` or `json`. |
 | leaderElection.enable | bool | `true` | Whether to enable leader election. |
 | maxConcurrentReconciles | int | `10` | Maximum number of concurrent reconciles. |
 | qps | int | `30` | Maximum QPS to the Kubernetes API server from this client. |

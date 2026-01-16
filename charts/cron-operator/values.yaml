@@ -39,6 +39,9 @@ image:
 # -- Number of replicas.
 replicas: 1
 
+# -- Configure the encoder of logging, can be one of `console` or `json`.
+logEncoder: console
+
 leaderElection:
   # -- Whether to enable leader election.
   enable: true
