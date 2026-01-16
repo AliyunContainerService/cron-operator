@@ -1,5 +1,8 @@
 # cron-operator
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/AliyunContainerService/cron-operator)](https://goreportcard.com/report/github.com/AliyunContainerService/cron-operator)
+[![Integration Test](https://github.com/AliyunContainerService/cron-operator/actions/workflows/integration.yaml/badge.svg)](https://github.com/AliyunContainerService/cron-operator/actions/workflows/integration.yaml)
+[![GitHub release](https://img.shields.io/github/v/release/AliyunContainerService/cron-operator)](https://github.com/AliyunContainerService/cron-operator/releases)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A Kubernetes operator that enables cron-based scheduling for machine learning training workloads using standard cron expressions.
@@ -38,7 +41,7 @@ The cron-operator follows the Kubernetes Operator pattern:
 
 ### Prerequisites
 
-- go version v1.24.6+
+- go version v1.25.5+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
@@ -99,51 +102,6 @@ make uninstall
 make undeploy
 ```
 
-## Project Distribution
+## Contributor Guide
 
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/cron-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-1. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/cron-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-1. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+For contributing to Cron Operator, please refer to [Contributor Guide](CONTRIBUTING.md).
