@@ -39,6 +39,9 @@ image:
 # -- Number of replicas.
 replicas: 1
 
+# -- Whether to use host timezone in the container.
+useHostTimezone: false
+
 # -- Container resources.
 resources:
   requests:

@@ -43,6 +43,12 @@ spec:
         - name: metrics
           containerPort: 8080
           protocol: TCP
+        {{- if .Values.useHostTimezone }}
+        volumeMounts:
+        - name: volume-localtime
+          mountPath: /etc/localtime
+          readOnly: true
+        {{- end }}
         livenessProbe:
           httpGet:
             port: 8081
@@ -61,6 +67,12 @@ spec:
         securityContext:
           {{- toYaml . | nindent 12 }}
         {{- end }}
+      {{- if .Values.useHostTimezone }}
+      volumes:
+      - name: volume-localtime
+        hostPath: 
+          path: /etc/localtime
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
