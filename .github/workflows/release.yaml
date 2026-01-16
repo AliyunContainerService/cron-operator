@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - release-*
+    paths:
+      - VERSION
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SEMVER_PATTERN: '^v([0-9]+)\.([0-9]+)\.([0-9]+)(-rc\.([0-9]+))?$'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Check whether version matches semver pattern
+        id: version
+        run: |
+          VERSION=$(cat VERSION)
+          if [[ ! ${VERSION} =~ ${{ env.SEMVER_PATTERN }} ]]; then
+            echo "Error: Version '${VERSION}' does not match semver pattern (e.g. v1.2.3)."
+            exit 1
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "RAW_VERSION=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Check whether chart version and appVersion matches version
+        run: |
+          CHART_FILE=charts/cron-operator/Chart.yaml
+          CHART_VERSION=$(grep '^version:' ${CHART_FILE} | awk '{print $2}')
+          CHART_APP_VERSION=$(grep '^appVersion:' ${CHART_FILE} | awk '{print $2}')
+          EXPECTED_VERSION="${{ steps.version.outputs.RAW_VERSION }}"
+          
+          if [[ "${CHART_VERSION}" != "${EXPECTED_VERSION}" ]]; then
+            echo "Error: Chart version '${CHART_VERSION}' does not match VERSION '${EXPECTED_VERSION}'."
+            exit 1
+          fi
+          if [[ "${CHART_APP_VERSION}" != "${EXPECTED_VERSION}" ]]; then
+            echo "Error: Chart appVersion '${CHART_APP_VERSION}' does not match VERSION '${EXPECTED_VERSION}'."
+            exit 1
+          fi
+
+      - name: Check if tag exists
+        run: |
+          if git rev-parse "${{ env.VERSION }}" &>/dev/null; then
+            echo "Error: Tag '${{ env.VERSION }}' already exists."
+            exit 1
+          fi
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.5
+
+      - name: Package Helm charts
+        run: |
+          mkdir -p dist
+          for chart in charts/*; do
+            if [ -d "$chart" ]; then
+              helm package "$chart" -d dist
+            fi
+          done
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Create and push tag
+        run: |
+          git tag -a "${{ env.VERSION }}" -m "Release ${{ env.VERSION }}"
+          git push origin "${{ env.VERSION }}"
+
+      - name: Create release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          name: ${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
+          prerelease: ${{ contains(env.VERSION, 'rc') }}
+          generate_release_notes: true
+          target_commitish: ${{ github.sha }}
+          draft: false
+          files: |
+            dist/*.tgz
