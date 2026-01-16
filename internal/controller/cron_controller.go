@@ -358,7 +358,7 @@ func (r *CronReconciler) newWorkloadFromTemplate(cron *v1alpha1.Cron, scheduleTi
 
 // trimFinishedWorkloadsFromActiveList removes workloads that are finished from active list.
 func (r *CronReconciler) trimFinishedWorkloadsFromActiveList(ctx context.Context, cron *v1alpha1.Cron, workloads []client.Object) error {
-	log := klog.FromContext(ctx)
+	log := logf.FromContext(ctx)
 	knownActive := sets.New[types.UID]()
 
 	for _, w := range workloads {
@@ -415,7 +415,7 @@ func (r *CronReconciler) trimFinishedWorkloadsFromActiveList(ctx context.Context
 
 // listActiveWorkloads lists all active workloads of a given cron.
 func (r *CronReconciler) listActiveWorkloads(ctx context.Context, cron *v1alpha1.Cron) ([]client.Object, error) {
-	log := klog.FromContext(ctx)
+	log := logf.FromContext(ctx)
 	active := cron.Status.Active
 	workloads := make([]client.Object, 0, len(active))
 
@@ -443,7 +443,7 @@ func (r *CronReconciler) listActiveWorkloads(ctx context.Context, cron *v1alpha1
 
 // deleteWorkload deletes a workload by its reference.
 func (r *CronReconciler) deleteWorkload(ctx context.Context, cron *v1alpha1.Cron, ref corev1.ObjectReference) error {
-	log := klog.FromContext(ctx)
+	log := logf.FromContext(ctx)
 	workload, err := newEmptyWorkload(cron)
 	if err != nil {
 		return err
