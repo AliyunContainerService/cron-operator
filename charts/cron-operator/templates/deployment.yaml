@@ -43,6 +43,9 @@ spec:
         - /manager
         args:
         - start
+        {{- with .Values.logEncoder}}
+        - --zap-encoder={{ . }}
+        {{- end }}
         - --leader-elect={{ .Values.leaderElection.enable }}
         {{- with .Values.maxConcurrentReconciles }}
         - --max-concurrent-reconciles={{ . }}

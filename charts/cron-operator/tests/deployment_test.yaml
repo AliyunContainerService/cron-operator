@@ -52,6 +52,14 @@ tests:
       path: spec.template.spec.containers[?(@.name=='cron-operator')].imagePullPolicy
       value: Always
 
+- it: Should use specified log encoder
+  set:
+    logEncoder: json
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].args
+      content: --zap-encoder=json
+
 - it: Should enable leader election if `leaderElection.enable` is set to true
   set:
     leaderElection:
