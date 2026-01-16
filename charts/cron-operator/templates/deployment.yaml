@@ -39,6 +39,11 @@ spec:
       - name: {{ .Chart.Name }}
         image: {{ include "cron-operator.image" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /manager
+        args:
+        - start
+        - --leader-elect={{ .Values.leaderElection.enable }}
         ports:
         - name: metrics
           containerPort: 8080

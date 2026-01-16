@@ -39,6 +39,10 @@ image:
 # -- Number of replicas.
 replicas: 1
 
+leaderElection:
+  # -- Whether to enable leader election.
+  enable: true
+
 # -- Whether to use host timezone in the container.
 useHostTimezone: false
 
