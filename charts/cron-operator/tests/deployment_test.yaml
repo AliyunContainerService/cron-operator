@@ -1,0 +1,144 @@
+#
+# Copyright 2026.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+suite: Test deployment
+
+templates:
+- deployment.yaml
+
+release:
+  name: cron-operator
+  namespace: cron-perator
+
+tests:
+- it: Should use the specified image repository if `image.registry`, `image.repository` and `image.tag` are set
+  set:
+    image:
+      registry: test-registry
+      repository: test-repository
+      tag: test-tag
+  asserts:
+  - equal:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].image
+      value: test-registry/test-repository:test-tag
+
+- it: Should use specified replicas
+  set:
+    replicas: 3
+  asserts:
+  - equal:
+      path: spec.replicas
+      value: 3
+
+- it: Should use specified image pull policy
+  set:
+    image:
+      pullPolicy: Always
+  asserts:
+  - equal:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].imagePullPolicy
+      value: Always
+
+- it: Should enable leader election if `leaderElection.enable` is set to true
+  set:
+    leaderElection:
+      enable: true
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].args
+      content: --leader-elect=true
+
+- it: Should disable leader election if `leaderElection.enable` is set to false
+  set:
+    leaderElection:
+      enable: false
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].args
+      content: --leader-elect=false
+
+- it: Should set resources
+  set:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+  asserts:
+  - equal:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].resources
+      value:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+
+- it: Should set nodeSelector, affinity and tolerations
+  set:
+    nodeSelector:
+      disktype: ssd
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - cron-operator
+          topologyKey: kubernetes.io/hostname
+    tolerations:
+    - key: example-key
+      operator: Exists
+      effect: "NoSchedule"
+  asserts:
+  - equal:
+      path: spec.template.spec.nodeSelector
+      value:
+        disktype: ssd
+  - equal:
+      path: spec.template.spec.affinity
+      value:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cron-operator
+            topologyKey: kubernetes.io/hostname
+  - equal:
+      path: spec.template.spec.tolerations
+      value:
+      - key: example-key
+        operator: Exists
+        effect: NoSchedule
+
+- it: Should mount host localtime if `useHostTimezone` is true
+  set:
+    useHostTimezone: true
+  asserts:
+  - equal:
+      path: spec.template.spec.volumes[?(@.name=='volume-localtime')].hostPath.path
+      value: /etc/localtime
+  - equal:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].volumeMounts[?(@.name=='volume-localtime')].mountPath
+      value: /etc/localtime
