@@ -68,6 +68,11 @@ jobs:
         run: |
           make manifests generate
           git diff --exit-code
+      
+      - name: Check Helm docs
+        run: |
+          make helm-docs
+          git diff --exit-code
 
   unit-test:
     needs:
