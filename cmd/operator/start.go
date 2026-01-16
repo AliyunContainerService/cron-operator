@@ -33,6 +33,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	logzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -59,6 +60,7 @@ func init() {
 
 func NewStartCommand() *cobra.Command {
 	var (
+		maxConcurrentReconciles                          int
 		metricsAddr                                      string
 		metricsCertPath, metricsCertName, metricsCertKey string
 		webhookCertPath, webhookCertName, webhookCertKey string
@@ -163,6 +165,9 @@ func NewStartCommand() *cobra.Command {
 				// if you are doing or is intended to do any operation such as perform cleanups
 				// after the manager stops then its usage might be unsafe.
 				// LeaderElectionReleaseOnCancel: true,
+				Controller: config.Controller{
+					MaxConcurrentReconciles: maxConcurrentReconciles,
+				},
 			})
 			if err != nil {
 				log.Error(err, "unable to start manager")
@@ -201,7 +206,7 @@ func NewStartCommand() *cobra.Command {
 		},
 	}
 
-	// Define flags.
+	cmd.Flags().IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 10, "The maximum number of concurrent reconciles for controller.")
 	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	cmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
