@@ -8,5 +8,6 @@ coverage:
         informational: true
 ignore:
 - api
+- cmd
 - hack
 - pkg/common
