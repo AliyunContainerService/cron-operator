@@ -78,6 +78,18 @@ tests:
       path: spec.template.spec.containers[?(@.name=='cron-operator')].args
       content: --max-concurrent-reconciles=60
 
+- it: Should set qps and burst
+  set:
+    qps: 50
+    burst: 100
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].args
+      content: --qps=50
+  - contains:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].args
+      content: --burst=100
+
 - it: Should set resources
   set:
     resources:

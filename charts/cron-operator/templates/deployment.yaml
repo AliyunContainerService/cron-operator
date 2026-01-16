@@ -47,6 +47,12 @@ spec:
         {{- with .Values.maxConcurrentReconciles }}
         - --max-concurrent-reconciles={{ . }}
         {{- end }}
+        {{- with .Values.qps }}
+        - --qps={{ . }}
+        {{- end }}
+        {{- with .Values.burst }}
+        - --burst={{ . }}
+        {{- end }}
         ports:
         - name: metrics
           containerPort: 8080

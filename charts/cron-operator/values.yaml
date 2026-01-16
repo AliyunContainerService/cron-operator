@@ -46,6 +46,12 @@ leaderElection:
 # -- Maximum number of concurrent reconciles.
 maxConcurrentReconciles: 10
 
+# -- Maximum QPS to the Kubernetes API server from this client.
+qps: 30
+
+# -- Maximum burst for throttle.
+burst: 50
+
 # -- Whether to use host timezone in the container.
 useHostTimezone: false
 

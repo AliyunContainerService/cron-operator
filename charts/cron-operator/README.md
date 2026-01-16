@@ -18,6 +18,8 @@ A Kubernetes operator that enables cron-based scheduling for machine learning tr
 | replicas | int | `1` | Number of replicas. |
 | leaderElection.enable | bool | `true` | Whether to enable leader election. |
 | maxConcurrentReconciles | int | `10` | Maximum number of concurrent reconciles. |
+| qps | int | `30` | Maximum QPS to the Kubernetes API server from this client. |
+| burst | int | `50` | Maximum burst for throttle. |
 | useHostTimezone | bool | `false` | Whether to use host timezone in the container. |
 | resources | object | `{"limits":{"cpu":"400m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Container resources. |
 | securityContext | object | `{}` | Container security context. |
