@@ -60,6 +60,14 @@ tests:
       path: spec.template.spec.containers[?(@.name=='cron-operator')].args
       content: --zap-encoder=json
 
+- it: Should use specified log level
+  set:
+    logLevel: debug
+  asserts:
+  - contains:
+      path: spec.template.spec.containers[?(@.name=='cron-operator')].args
+      content: --zap-level=debug
+
 - it: Should enable leader election if `leaderElection.enable` is set to true
   set:
     leaderElection:

@@ -42,6 +42,9 @@ replicas: 1
 # -- Configure the encoder of logging, can be one of `console` or `json`.
 logEncoder: console
 
+# -- Configure the verbosity of logging, can be one of `debug`, `info`, `error`.
+logLevel: info
+
 leaderElection:
   # -- Whether to enable leader election.
   enable: true
