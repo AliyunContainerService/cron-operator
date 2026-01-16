@@ -139,17 +139,17 @@ func (r *CronReconciler) syncCron(ctx context.Context, cron *v1alpha1.Cron, work
 
 	// 3) check deletion/suspend/deadline state from retrieved cron object.
 	if cron.DeletionTimestamp != nil {
-		log.V(1).Info(fmt.Sprintf("Cron has been deleted at %v", cron.DeletionTimestamp))
+		log.Info(fmt.Sprintf("Cron has been deleted at %v", cron.DeletionTimestamp))
 		return nil, nil
 	}
 
 	if cron.Spec.Suspend != nil && *cron.Spec.Suspend {
-		log.V(1).Info("Cron has been suspended")
+		log.Info("Cron has been suspended")
 		return nil, nil
 	}
 
 	if cron.Spec.Deadline != nil && now.After(cron.Spec.Deadline.Time) {
-		log.V(1).Info("Cron has reached deadline and will not trigger scheduling anymore")
+		log.Info("Cron has reached deadline and will not trigger scheduling anymore")
 		r.recorder.Event(cron, corev1.EventTypeNormal, "Deadline", "cron has reach deadline and stop scheduling")
 		return nil, nil
 	}
@@ -186,12 +186,12 @@ func (r *CronReconciler) scheduleNextIfPossible(ctx context.Context, cron *v1alp
 	}
 
 	if scheduledTime == nil {
-		log.V(1).Info("No unmet start time")
+		log.Info("No unmet start time")
 		return nextScheduledTimeDuration(schedule, now), nil
 	}
 
 	if cron.Status.LastScheduleTime.Equal(&metav1.Time{Time: *scheduledTime}) {
-		log.V(1).Info("Not starting because the scheduled time is already precessed, cron: %s/%s", cron.Namespace, cron.Name)
+		log.Info("Not starting because the scheduled time is already precessed, cron: %s/%s", cron.Namespace, cron.Name)
 		return nextScheduledTimeDuration(schedule, now), nil
 	}
 
@@ -203,13 +203,13 @@ func (r *CronReconciler) scheduleNextIfPossible(ctx context.Context, cron *v1alp
 		// As long the as the invocations are "far enough apart in time", this usually won't happen.
 		//
 		// TODO: for Forbid, we could use the same name for every execution, as a lock.
-		log.V(1).Info("Not starting because prior execution is still running and concurrency policy is Forbid")
+		log.Info("Not starting because prior execution is still running and concurrency policy is Forbid")
 		r.recorder.Eventf(cron, corev1.EventTypeNormal, "AlreadyActive", "Not starting because prior execution is running and concurrency policy is Forbid")
 		return nextScheduledTimeDuration(schedule, now), nil
 	}
 	if cron.Spec.ConcurrencyPolicy == v1alpha1.ConcurrentPolicyReplace {
 		for _, active := range cron.Status.Active {
-			log.V(1).Info("Deleting workload that was still running at next scheduled start time", active.Kind, klog.KRef(active.Namespace, active.Name))
+			log.Info("Deleting workload that was still running at next scheduled start time", active.Kind, klog.KRef(active.Namespace, active.Name))
 			if err = r.deleteWorkload(ctx, cron, active); err != nil {
 				return nil, err
 			}
