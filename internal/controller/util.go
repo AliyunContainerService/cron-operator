@@ -24,8 +24,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-// LogConstructor returns a log constructor for the given kind.
-func LogConstructor(logger logr.Logger, kind string) func(*reconcile.Request) logr.Logger {
+// logConstructor returns a log constructor for the given kind.
+func logConstructor(logger logr.Logger, kind string) func(*reconcile.Request) logr.Logger {
 	// Use the lowercase of kind as controller name, as it will show up in the metrics,
 	// and thus should be a prometheus compatible name(underscores and alphanumeric characters only).
 	name := strings.ToLower(kind)

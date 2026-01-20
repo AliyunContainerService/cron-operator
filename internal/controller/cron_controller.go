@@ -18,22 +18,21 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
-	"slices"
-	"sort"
 	"time"
 
 	kubeflowv1 "github.com/kubeflow/training-operator/pkg/apis/kubeflow.org/v1"
+	kubeflowutil "github.com/kubeflow/training-operator/pkg/util"
 	cronv3 "github.com/robfig/cron/v3"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/tools/reference"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,7 +72,7 @@ func (r *CronReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.Cron{}).
 		Owns(&kubeflowv1.PyTorchJob{}).
 		Owns(&kubeflowv1.TFJob{}).
-		WithLogConstructor(LogConstructor(mgr.GetLogger(), "cron")).
+		WithLogConstructor(logConstructor(mgr.GetLogger(), "cron")).
 		Complete(r)
 }
 
@@ -85,234 +84,264 @@ func (r *CronReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=kubeflow.org,resources=tfjobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubeflow.org,resources=tfjobs/status,verbs=get
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// The controller will reconcile the Cron object and create/manage jobs based on the cron schedule.
-func (r *CronReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// Reconcile is the main reconciliation loop for Cron objects.
+// It ensures that the current state of the cluster (active workloads) matches
+// the desired state defined in the Cron schedule.
+func (r *CronReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
 	log := logf.FromContext(ctx)
-	log.Info("Start reconciling")
-	defer log.Info("Finish reconciling")
+	log.Info("Start reconciling Cron")
+	defer log.Info("Finish reconciling Cron")
 
-	cron := &v1alpha1.Cron{}
-	if err := r.client.Get(ctx, req.NamespacedName, cron); err != nil {
+	// Get the Cron object from cache.
+	oldCron := &v1alpha1.Cron{}
+	if err := r.client.Get(ctx, req.NamespacedName, oldCron); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Cron has been deleted")
+			log.Info("Skip reconciling Cron for it may have been deleted")
 			return ctrl.Result{}, nil
 		}
+		// Requeue the request when there is an error getting the Cron object.
 		return ctrl.Result{}, err
 	}
+	cron := oldCron.DeepCopy()
 
-	actives, err := r.listActiveWorkloads(ctx, cron)
+	defer func() {
+		if apiequality.Semantic.DeepEqual(oldCron.Status, cron.Status) {
+			return
+		}
+
+		if err := r.client.Status().Update(ctx, cron); err != nil {
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("failed to update Cron status: %w", err))
+		}
+
+		// Suppress controller-runtime warnings when returning a non-empty ctrl.Result and a non-nil error.
+		if reconcileErr != nil {
+			result = ctrl.Result{}
+		}
+	}()
+
+	gvk, err := getWorkloadGVK(cron)
 	if err != nil {
-		return ctrl.Result{}, err
+		log.Error(err, "Failed to get workload GVK")
+		return ctrl.Result{}, nil
 	}
 
-	if err = r.updateCronHistory(ctx, cron, actives); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	requeueAfeter, err := r.syncCron(ctx, cron, actives)
+	// List all workloads owned by this Cron.
+	workloads, err := r.listWorkloads(ctx, cron)
 	if err != nil {
+		log.Error(err, fmt.Sprintf("Failed to list %s", gvk.Kind))
 		return ctrl.Result{}, err
 	}
-	if requeueAfeter != nil {
-		return ctrl.Result{RequeueAfter: *requeueAfeter}, nil
+
+	// Filter workloads into active and terminated lists.
+	activeWorkloads := []client.Object{}
+	terminatedWorkloads := []client.Object{}
+	for _, workload := range workloads {
+		status, err := getJobStatus(workload)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Failed to get %s status", gvk.Kind))
+			continue
+		}
+
+		switch {
+		case kubeflowutil.IsSucceeded(status) || kubeflowutil.IsFailed(status):
+			terminatedWorkloads = append(terminatedWorkloads, workload)
+		default:
+			activeWorkloads = append(activeWorkloads, workload)
+		}
+	}
+	log.Info(fmt.Sprintf("%s count", gvk.Kind), "active", len(activeWorkloads), "terminated", len(terminatedWorkloads))
+
+	// Sync Cron status with active and terminated workloads.
+	if err := r.syncStatus(ctx, cron, activeWorkloads, terminatedWorkloads); err != nil {
+		log.Error(err, "Failed to sync Cron status")
+		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
-}
-
-func (r *CronReconciler) syncCron(ctx context.Context, cron *v1alpha1.Cron, workloads []client.Object) (*time.Duration, error) {
-	log := logf.FromContext(ctx)
 	now := time.Now()
 
-	// 1) trim finished and missed workload from active list.
-	if err := r.trimFinishedWorkloadsFromActiveList(ctx, cron, workloads); err != nil {
-		return nil, err
-	}
-
-	// 2) apply latest cron status to cluster.
-	if err := r.client.Status().Update(ctx, cron); err != nil {
-		log.Error(err, "unable to update status for cron %s/%s ", cron.Namespace, cron.Name)
-		return nil, err
-	}
-
-	// 3) check deletion/suspend/deadline state from retrieved cron object.
+	// Check if the Cron has been deleted.
 	if cron.DeletionTimestamp != nil {
-		log.Info(fmt.Sprintf("Cron has been deleted at %v", cron.DeletionTimestamp))
-		return nil, nil
+		log.Info("Cron has been deleted", "deletionTimestamp", cron.DeletionTimestamp)
+		return ctrl.Result{}, nil
 	}
 
-	if cron.Spec.Suspend != nil && *cron.Spec.Suspend {
+	// Check if the Cron has been suspended.
+	suspend := ptr.Deref(cron.Spec.Suspend, false)
+	if suspend {
 		log.Info("Cron has been suspended")
-		return nil, nil
+		return ctrl.Result{}, nil
 	}
 
+	// Check if the Cron has reached its deadline.
 	if cron.Spec.Deadline != nil && now.After(cron.Spec.Deadline.Time) {
 		log.Info("Cron has reached deadline and will not trigger scheduling anymore")
 		r.recorder.Event(cron, corev1.EventTypeNormal, "Deadline", "cron has reach deadline and stop scheduling")
-		return nil, nil
+		return ctrl.Result{}, nil
 	}
 
-	// 4) schedule next workload if schedule time has come.
-	nextDuration, err := r.scheduleNextIfPossible(ctx, cron, now)
+	// figure out the next times that we need to create
+	// jobs at (or anything we missed).
+	missedRun, nextRun, err := r.getNextSchedule(ctx, cron, now)
 	if err != nil {
-		log.Error(err, "unable to schedule next workload")
-		return nil, err
-	}
-	return nextDuration, nil
-}
-
-func (r *CronReconciler) scheduleNextIfPossible(ctx context.Context, cron *v1alpha1.Cron, now time.Time) (*time.Duration, error) {
-	log := logf.FromContext(ctx)
-	schedule, err := cronv3.ParseStandard(cron.Spec.Schedule)
-	if err != nil {
-		// this is likely a user error in defining the spec value
-		// we should log the error and not reconcile this cronjob until an update to spec.
-		msg := fmt.Sprintf("failed to parse schedule %s: %v", cron.Spec.Schedule, err)
-		log.Info(msg)
-		r.recorder.Eventf(cron, corev1.EventTypeWarning, "InvalidSchedule", msg)
-		return nil, nil
+		log.Error(err, "Failed to figure out CronJob schedule")
+		// we don't really care about requeuing until we get an update that
+		// fixes the schedule, so don't return an error
+		return ctrl.Result{}, nil
 	}
 
-	scheduledTime, err := getNextScheduleTime(cron, now, schedule, r.recorder)
-	if err != nil {
-		// this is likely a user error in defining the spec value
-		// we should log the error and not reconcile this cronjob until an update to spec
-		msg := fmt.Sprintf("invalid schedule: %s", cron.Spec.Schedule)
-		log.Error(err, msg)
-		r.recorder.Event(cron, corev1.EventTypeWarning, "InvalidSchedule", msg)
-		return nil, err
+	scheduledResult := ctrl.Result{RequeueAfter: nextRun.Sub(now)}
+	log = log.WithValues("now", now, "next run", nextRun)
+
+	// If we've missed a run, and we're still within the deadline to start it, we'll need to run a job.
+	if missedRun.IsZero() {
+		log.V(1).Info("No upcoming schedules, wait until next")
+		return scheduledResult, nil
 	}
 
-	if scheduledTime == nil {
-		log.Info("No unmet start time")
-		return nextScheduledTimeDuration(schedule, now), nil
+	log = log.WithValues("current run", missedRun)
+
+	// Handle concurrency policy forbid.
+	if cron.Spec.ConcurrencyPolicy == v1alpha1.ConcurrentPolicyForbid && len(activeWorkloads) > 0 {
+		log.V(1).Info(fmt.Sprintf("Skip creating new %s due to concurrency policy forbid", gvk.Kind), "active", len(activeWorkloads))
+		return scheduledResult, nil
 	}
 
-	if cron.Status.LastScheduleTime.Equal(&metav1.Time{Time: *scheduledTime}) {
-		log.Info("Not starting because the scheduled time is already precessed, cron: %s/%s", cron.Namespace, cron.Name)
-		return nextScheduledTimeDuration(schedule, now), nil
-	}
-
-	if cron.Spec.ConcurrencyPolicy == v1alpha1.ConcurrentPolicyForbid && len(cron.Status.Active) > 0 {
-		// Regardless which source of information we use for the set of active jobs,
-		// there is some risk that we won't see an active job when there is one.
-		// (because we haven't seen the status update to the Cron or the created pod).
-		// So it is theoretically possible to have concurrency with Forbid.
-		// As long the as the invocations are "far enough apart in time", this usually won't happen.
-		//
-		// TODO: for Forbid, we could use the same name for every execution, as a lock.
-		log.Info("Not starting because prior execution is still running and concurrency policy is Forbid")
-		r.recorder.Eventf(cron, corev1.EventTypeNormal, "AlreadyActive", "Not starting because prior execution is running and concurrency policy is Forbid")
-		return nextScheduledTimeDuration(schedule, now), nil
-	}
+	// Handle concurrency policy replace.
 	if cron.Spec.ConcurrencyPolicy == v1alpha1.ConcurrentPolicyReplace {
-		for _, active := range cron.Status.Active {
-			log.Info("Deleting workload that was still running at next scheduled start time", active.Kind, klog.KRef(active.Namespace, active.Name))
-			if err = r.deleteWorkload(ctx, cron, active); err != nil {
-				return nil, err
+		for _, workload := range activeWorkloads {
+			// we don't care if the job was already deleted
+			objectRef := klog.KRef(workload.GetNamespace(), workload.GetName())
+			log.Info(fmt.Sprintf("Deleting active %s", gvk.Kind), gvk.Kind, objectRef)
+			if err := r.client.Delete(ctx, workload, client.PropagationPolicy(metav1.DeletePropagationBackground)); client.IgnoreNotFound(err) != nil {
+				log.Error(err, fmt.Sprintf("Failed to delete active %s", gvk.Kind), gvk.Kind, objectRef)
+				return ctrl.Result{}, err
 			}
 		}
 	}
 
-	workloadToCreate, err := r.newWorkloadFromTemplate(cron, *scheduledTime)
+	workload, err := r.newWorkloadFromTemplate(cron, nextRun)
 	if err != nil {
-		return nil, fmt.Errorf("unable to initialize workload from cron template: %v", err)
+		return ctrl.Result{}, fmt.Errorf("unable to initialize %s from cron template: %v", gvk.Kind, err)
 	}
-	if err := r.client.Create(ctx, workloadToCreate); err != nil {
+
+	objectRef := klog.KRef(workload.GetNamespace(), workload.GetName())
+	log.Info(fmt.Sprintf("Creating %s", gvk.Kind), gvk.Kind, objectRef)
+	if err := r.client.Create(ctx, workload); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			// If workload is created by other actor and has already in active list, assume it has updated the cron
-			// status accordingly, else not return and fallback to append active list then update status.
-			log.Info("Workload already exists", workloadToCreate.GetObjectKind().GroupVersionKind().Kind, klog.KRef(workloadToCreate.GetNamespace(), workloadToCreate.GetName()))
-			if inActiveList(cron.Status.Active, workloadToCreate) {
-				return nil, err
-			}
+			log.Info(fmt.Sprintf("%s already exists", gvk.Kind), gvk.Kind, objectRef)
 		}
-		r.recorder.Eventf(cron, corev1.EventTypeWarning, "FailedCreate", "Error creating workload: %v", err)
-		return nil, err
+		r.recorder.Eventf(cron, corev1.EventTypeWarning, "FailedCreate", "Error creating %s: %v", gvk.Kind, err)
+		return ctrl.Result{}, err
 	}
-
-	ref, err := reference.GetReference(r.scheme, workloadToCreate)
-	if err != nil {
-		return nil, err
-	}
-	r.recorder.Eventf(cron, corev1.EventTypeNormal, "SuccessfulCreate", "Created workload: %v", ref.Name)
-
-	cron.Status.Active = append(cron.Status.Active, *ref)
-	cron.Status.LastScheduleTime = &metav1.Time{Time: *scheduledTime}
-	if err = r.client.Status().Update(ctx, cron); err != nil {
-		log.Error(err, "Failed to update status")
-		return nil, err
-	}
-	return nextScheduledTimeDuration(schedule, now), nil
+	cron.Status.LastScheduleTime = ptr.To(metav1.Time{Time: now})
+	return scheduledResult, nil
 }
 
-// updateCronHistory updates the cron status history with the given workloads.
-func (r *CronReconciler) updateCronHistory(ctx context.Context, cron *v1alpha1.Cron, workloads []client.Object) error {
+// List all workloads owned by the given Cron object.
+func (r *CronReconciler) listWorkloads(ctx context.Context, cron *v1alpha1.Cron) ([]client.Object, error) {
 	log := logf.FromContext(ctx)
-	// history maps current cron history from a unique key to index in history slice.
-	history := map[string]int{}
 
-	// unique cron history keyed by {name}-{startTimestamp}
-	key := func(h *v1alpha1.CronHistory) string { return fmt.Sprintf("%s-%d", h.Object.Name, h.Created.Unix()) }
+	workload, err := newEmptyWorkload(cron)
+	if err != nil {
+		return nil, err
+	}
+	gvk := workload.GetObjectKind().GroupVersionKind()
 
-	for i := range cron.Status.History {
-		history[key(&cron.Status.History[i])] = i
+	log.V(1).Info(fmt.Sprintf("Listing %s", gvk.Kind))
+	uList := unstructured.UnstructuredList{}
+	uList.SetGroupVersionKind(gvk)
+	matchingLabels := map[string]string{
+		common.LabelCronName: cron.Name,
+	}
+	if err := r.client.List(ctx, &uList, client.InNamespace(cron.Namespace), client.MatchingLabels(matchingLabels)); err != nil {
+		return nil, err
 	}
 
-	for i := range workloads {
-		workload := workloads[i]
-		newHistory := workloadToHistory(workload, cron.Spec.Template.APIVersion, cron.Spec.Template.Kind)
-		nk := key(&newHistory)
-		if idx, ok := history[nk]; ok {
-			// only value of status that can change.
-			cron.Status.History[idx].UID = newHistory.UID
-			cron.Status.History[idx].Status = newHistory.Status
-			if newHistory.Finished != nil {
-				cron.Status.History[idx].Finished = newHistory.Finished
+	workloads := make([]client.Object, len(uList.Items))
+	for i, u := range uList.Items {
+		workloads[i] = &u
+	}
+	return workloads, nil
+}
+
+// Sync Cron status.
+func (r *CronReconciler) syncStatus(ctx context.Context, cron *v1alpha1.Cron, activeWorkloads []client.Object, terminatedWorkloads []client.Object) error {
+	log := logf.FromContext(ctx)
+	log.V(1).Info("Syncing Cron status")
+
+	if err := r.syncActiveList(ctx, cron, activeWorkloads); err != nil {
+		return err
+	}
+
+	if err := r.syncCronHistory(ctx, cron, terminatedWorkloads); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Sync active list.
+func (r *CronReconciler) syncActiveList(ctx context.Context, cron *v1alpha1.Cron, activeWorkloads []client.Object) error {
+	log := logf.FromContext(ctx)
+	log.V(1).Info("Syncing active list")
+
+	sortByCreationTimestamp(activeWorkloads)
+	refs := make([]corev1.ObjectReference, len(activeWorkloads))
+	for i, workload := range activeWorkloads {
+		gvk := workload.GetObjectKind().GroupVersionKind()
+		refs[i] = corev1.ObjectReference{
+			APIVersion:      gvk.GroupVersion().String(),
+			Kind:            gvk.Kind,
+			Name:            workload.GetName(),
+			Namespace:       workload.GetNamespace(),
+			UID:             workload.GetUID(),
+			ResourceVersion: workload.GetResourceVersion(),
+		}
+	}
+	cron.Status.Active = refs
+	return nil
+}
+
+// Sync Cron history.
+func (r *CronReconciler) syncCronHistory(ctx context.Context, cron *v1alpha1.Cron, terminatedWorkloads []client.Object) error {
+	log := logf.FromContext(ctx)
+	log.V(1).Info("Syncing Cron history")
+
+	sortByCreationTimestamp(terminatedWorkloads)
+
+	n := len(terminatedWorkloads)
+	history := []v1alpha1.CronHistory{}
+	historyLimit := ptr.Deref(cron.Spec.HistoryLimit, math.MaxInt)
+	for i, workload := range terminatedWorkloads {
+		gvk := workload.GetObjectKind().GroupVersionKind()
+		objectRef := klog.KRef(workload.GetNamespace(), workload.GetName())
+		if i < n-historyLimit {
+			log.Info(fmt.Sprintf("Deleting terminated %s", gvk.Kind), gvk.Kind, objectRef)
+			if err := r.client.Delete(ctx, workload, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+				log.Error(err, fmt.Sprintf("Failed to delete terminated %s", gvk.Kind), gvk.Kind, objectRef)
 			}
 		} else {
-			cron.Status.History = append(cron.Status.History, newHistory)
-		}
-	}
-
-	// Sort history by creation time (oldest first).
-	sort.Slice(cron.Status.History, func(i, j int) bool {
-		history := cron.Status.History
-		if history[i].Created == nil && history[j].Created != nil {
-			return false
-		}
-		if history[i].Created != nil && history[j].Created == nil {
-			return true
-		}
-		if history[i].Created.Equal(history[j].Created) {
-			return history[i].Object.Name < history[j].Object.Name
-		}
-		return history[i].Created.Before(history[j].Created)
-	})
-
-	historySize := len(cron.Status.History)
-	historyLimit := ptr.Deref(cron.Spec.HistoryLimit, math.MaxInt)
-	if historySize > historyLimit {
-		log.Info(fmt.Sprintf("Truncate history for its size has exceed history limit %d", historyLimit))
-		toTruncate := cron.Status.History[:historySize-historyLimit]
-		for _, truncate := range toTruncate {
-			if err := r.deleteWorkload(ctx, cron, corev1.ObjectReference{
-				UID:        truncate.UID,
-				Kind:       truncate.Object.Kind,
-				Namespace:  cron.Namespace,
-				Name:       truncate.Object.Name,
-				APIVersion: *truncate.Object.APIGroup,
-			}); err != nil {
-				return err
+			status, finished := isWorkloadFinished(workload)
+			entry := v1alpha1.CronHistory{
+				UID: workload.GetUID(),
+				Object: corev1.TypedLocalObjectReference{
+					// For backward compatibility, we pass group/version instead of just group.
+					APIGroup: ptr.To(gvk.GroupVersion().String()),
+					Kind:     gvk.Kind,
+					Name:     workload.GetName(),
+				},
+				Status:  status,
+				Created: ptr.To(workload.GetCreationTimestamp()),
 			}
+			if finished {
+				entry.Finished = ptr.To(metav1.Now())
+			}
+			history = append(history, entry)
 		}
-
-		cron.Status.History = cron.Status.History[historySize-historyLimit:]
 	}
 
-	return r.client.Status().Update(ctx, cron)
+	cron.Status.History = history
+	return nil
 }
 
 // newWorkloadFromTemplate creates a new workload from a cron template.
@@ -335,7 +364,7 @@ func (r *CronReconciler) newWorkloadFromTemplate(cron *v1alpha1.Cron, scheduleTi
 	if len(w.GetName()) == 0 {
 		w.SetName(getDefaultJobName(cron, scheduleTime))
 	} else {
-		r.recorder.Event(cron, corev1.EventTypeNormal, "OverridePolicy", "metadata.name has been specifeid in workload template, override cron concurrency policy as Forbidden")
+		r.recorder.Event(cron, corev1.EventTypeNormal, "OverridePolicy", "metadata.name has been specified in workload template, override cron concurrency policy as Forbidden")
 		cron.Spec.ConcurrencyPolicy = v1alpha1.ConcurrentPolicyForbid
 	}
 	w.SetNamespace(cron.Namespace)
@@ -356,114 +385,52 @@ func (r *CronReconciler) newWorkloadFromTemplate(cron *v1alpha1.Cron, scheduleTi
 	return w, err
 }
 
-// trimFinishedWorkloadsFromActiveList removes workloads that are finished from active list.
-func (r *CronReconciler) trimFinishedWorkloadsFromActiveList(ctx context.Context, cron *v1alpha1.Cron, workloads []client.Object) error {
+func (r *CronReconciler) getNextSchedule(ctx context.Context, cron *v1alpha1.Cron, now time.Time) (lastMissed time.Time, next time.Time, err error) {
 	log := logf.FromContext(ctx)
-	knownActive := sets.New[types.UID]()
 
-	for _, w := range workloads {
-		knownActive.Insert(w.GetUID())
-		found := slices.ContainsFunc(cron.Status.Active, func(r corev1.ObjectReference) bool { return r.UID == w.GetUID() })
-		_, finished := IsWorkloadFinished(w)
-		if !found && !finished {
-			// Workload is not in active list and has not finish yet, treat it as an unexpected workload.
-			// Retrieve latest cron status and double checks first.
-			latestCron := &v1alpha1.Cron{}
-			key := types.NamespacedName{Namespace: cron.Namespace, Name: cron.Name}
-			if err := r.client.Get(ctx, key, latestCron); err != nil {
-				return err
-			}
-			if inActiveList(latestCron.Status.Active, w) {
-				cron = latestCron
-				continue
-			}
-			r.recorder.Eventf(cron, corev1.EventTypeWarning, "ExpectedWorkload", "Saw a workload that the controller did not create or forgot: %s", w.GetName())
-			// We found an unfinished workload that has us as the parent, but it is not in our Active list.
-			// This could happen if we crashed right after creating the Workload and before updating the status,
-			// or if our workloads list is newer than our cron status after a relist, or if someone intentionally created.
-		} else if found && finished {
-			deleteFromActiveList(cron, w.GetUID())
-			r.recorder.Eventf(cron, corev1.EventTypeNormal, "SawCompletedWorkload", "Saw completed workload: %s", w.GetName())
-		}
-	}
-
-	// Remove any reference from the active list if the corresponding workload does not exist any more.
-	// Otherwise, the cron may be stuck in active mode forever even though there is no matching running.
-	for _, objRef := range cron.Status.Active {
-		if knownActive.Has(objRef.UID) {
-			continue
-		}
-
-		wl, err := newEmptyWorkload(cron)
-		if err != nil {
-			log.Error(err, "failed to initialize a new workload, apiVersion: %s, kind: %s", objRef.APIVersion, objRef.Kind)
-			continue
-		}
-
-		key := types.NamespacedName{Namespace: objRef.Namespace, Name: objRef.Name}
-		if err := r.reader.Get(ctx, key, wl); err != nil {
-			if apierrors.IsNotFound(err) {
-				r.recorder.Eventf(cron, corev1.EventTypeNormal, "MissingWorkload", "Active workload went missing: %v", objRef.Name)
-				deleteFromActiveList(cron, objRef.UID)
-			}
-			return err
-		}
-	}
-
-	return nil
-}
-
-// listActiveWorkloads lists all active workloads of a given cron.
-func (r *CronReconciler) listActiveWorkloads(ctx context.Context, cron *v1alpha1.Cron) ([]client.Object, error) {
-	log := logf.FromContext(ctx)
-	active := cron.Status.Active
-	workloads := make([]client.Object, 0, len(active))
-
-	for i, ref := range active {
-		workload, err := newEmptyWorkload(cron)
-		if err != nil {
-			log.Error(err, "unsupported cron workload and failed to init by scheme, kind: %s", active[i].Kind, err)
-			continue
-		}
-
-		key := types.NamespacedName{Name: ref.Name, Namespace: ref.Namespace}
-		if err := r.client.Get(ctx, key, workload); err != nil {
-			if apierrors.IsNotFound(err) {
-				log.Info("active workload %s has been deleted", key)
-				continue
-			}
-			return nil, err
-		}
-
-		workloads = append(workloads, workload)
-	}
-
-	return workloads, nil
-}
-
-// deleteWorkload deletes a workload by its reference.
-func (r *CronReconciler) deleteWorkload(ctx context.Context, cron *v1alpha1.Cron, ref corev1.ObjectReference) error {
-	log := logf.FromContext(ctx)
-	workload, err := newEmptyWorkload(cron)
+	sched, err := cronv3.ParseStandard(cron.Spec.Schedule)
 	if err != nil {
-		return err
+		return time.Time{}, time.Time{}, fmt.Errorf("unparsable cron %q: %w", cron.Spec.Schedule, err)
 	}
 
-	key := types.NamespacedName{Namespace: ref.Namespace, Name: ref.Name}
-	if err = r.client.Get(ctx, key, workload); err != nil {
-		if apierrors.IsNotFound(err) {
-			deleteFromActiveList(cron, ref.UID)
-			log.V(1).Info("workload %s has been deleted from active list", key)
-			return nil
+	var earliestTime time.Time
+	if cron.Status.LastScheduleTime != nil {
+		earliestTime = cron.Status.LastScheduleTime.Time
+	} else {
+		earliestTime = cron.CreationTimestamp.Time
+	}
+
+	if earliestTime.After(now) {
+		return time.Time{}, sched.Next(now), nil
+	}
+
+	missedTimes := 0
+	for t := sched.Next(earliestTime); !t.After(now); t = sched.Next(t) {
+		if t.IsZero() {
+			return time.Time{}, time.Time{}, fmt.Errorf("unschedulable cron %q: %w", cron.Spec.Schedule, err)
 		}
-		return err
+
+		lastMissed = t
+		// An object might miss several starts. For example, if
+		// controller gets wedged on Friday at 5:01pm when everyone has
+		// gone home, and someone comes in on Tuesday AM and discovers
+		// the problem and restarts the controller, then all the hourly
+		// jobs, more than 80 of them for one hourly scheduledJob, should
+		// all start running with no further intervention (if the scheduledJob
+		// allows concurrency and late starts).
+		//
+		// However, if there is a bug somewhere, or incorrect clock
+		// on controller's server or apiservers (for setting creationTimestamp)
+		// then there could be so many missed start times (it could be off
+		// by decades or more), that it would eat up all the CPU and memory
+		// of this controller. In that case, we want to not try to list
+		// all the missed start times.
+		missedTimes++
+	}
+	if missedTimes > 100 {
+		r.recorder.Eventf(cron, corev1.EventTypeWarning, "TooManyMissedTimes", "too many missed start times: %d. Check clock skew", missedTimes)
+		log.Info("Too many missed times", "missed times", missedTimes)
 	}
 
-	deleteFromActiveList(cron, ref.UID)
-	if err = r.client.Delete(ctx, workload); err != nil {
-		log.Error(err, "failed to delete workload %s ", key)
-	}
-
-	r.recorder.Eventf(cron, corev1.EventTypeNormal, "SuccessfulDelete", "successfully delete workload %s", ref.Name)
-	return nil
+	return lastMissed, sched.Next(now), nil
 }
