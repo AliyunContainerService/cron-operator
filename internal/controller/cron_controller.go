@@ -109,8 +109,8 @@ func (r *CronReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 			return
 		}
 
-		if err := r.client.Status().Update(ctx, cron); err != nil {
-			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("failed to update Cron status: %w", err))
+		if err := r.client.Status().Patch(ctx, cron, client.MergeFrom(oldCron)); err != nil {
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("failed to patch Cron status: %w", err))
 		}
 
 		// Suppress controller-runtime warnings when returning a non-empty ctrl.Result and a non-nil error.
