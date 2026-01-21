@@ -317,7 +317,7 @@ func (r *CronReconciler) syncCronHistory(ctx context.Context, cron *v1alpha1.Cro
 		objectRef := klog.KRef(workload.GetNamespace(), workload.GetName())
 		if i < n-historyLimit {
 			log.Info(fmt.Sprintf("Deleting terminated %s", gvk.Kind), gvk.Kind, objectRef)
-			if err := r.client.Delete(ctx, workload, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+			if err := r.client.Delete(ctx, workload, client.PropagationPolicy(metav1.DeletePropagationBackground)); client.IgnoreNotFound(err) != nil {
 				log.Error(err, fmt.Sprintf("Failed to delete terminated %s", gvk.Kind), gvk.Kind, objectRef)
 			}
 		} else {
