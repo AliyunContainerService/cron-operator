@@ -229,9 +229,10 @@ func (r *CronReconciler) Reconcile(ctx context.Context, req ctrl.Request) (resul
 	if err := r.client.Create(ctx, workload); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			log.Info(fmt.Sprintf("%s already exists", gvk.Kind), gvk.Kind, objectRef)
+		} else {
+			r.recorder.Eventf(cron, corev1.EventTypeWarning, "FailedCreate", "Error creating %s: %v", gvk.Kind, err)
+			return ctrl.Result{}, err
 		}
-		r.recorder.Eventf(cron, corev1.EventTypeWarning, "FailedCreate", "Error creating %s: %v", gvk.Kind, err)
-		return ctrl.Result{}, err
 	}
 	cron.Status.LastScheduleTime = ptr.To(metav1.Time{Time: now})
 	return scheduledResult, nil
