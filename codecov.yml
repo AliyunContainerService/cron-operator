@@ -11,3 +11,4 @@ ignore:
 - cmd
 - hack
 - pkg/common
+- test/utils
