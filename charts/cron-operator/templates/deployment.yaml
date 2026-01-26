@@ -94,18 +94,30 @@ spec:
           path: /etc/localtime
       {{- end }}
       {{- $nodeSelector := mergeOverwrite (deepCopy .Values.global.nodeSelector) .Values.nodeSelector }}
-      {{- with $nodeSelector }}
+      {{- if or $nodeSelector (eq .Values.global.clusterProfile "Edge") }}
       nodeSelector:
+        {{- with $nodeSelector }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if eq .Values.global.clusterProfile "Edge" }}
+        alibabacloud.com/is-edge-worker: "false"
+        {{- end }}
       {{- end }}
       {{- with .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- $tolerations := concat .Values.global.tolerations .Values.tolerations }}
-      {{- with $tolerations }}
+      {{- if or $tolerations (eq .Values.global.clusterProfile "Edge") }}
       tolerations:
+      {{- with $tolerations }}
       {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- if eq .Values.global.clusterProfile "Edge" }}
+      - key: node-role.alibabacloud.com/addon
+        operator: Exists
+        effect: NoSchedule
+      {{- end }}
       {{- end }}
       serviceAccountName: {{ include "cron-operator.serviceAccount.name" . }}
       {{- with .Values.podSecurityContext }}

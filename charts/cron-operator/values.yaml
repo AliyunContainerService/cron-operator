@@ -20,6 +20,8 @@
 
 # Global configurations.
 global:
+  # -- ACK Cluster profile.
+  clusterProfile: ""
   # -- Global pod node selector.
   nodeSelector: {}
   # -- Global pod tolerations.

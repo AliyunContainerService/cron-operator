@@ -8,6 +8,7 @@ A Kubernetes operator that enables cron-based scheduling for machine learning tr
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| global.clusterProfile | string | `""` | ACK Cluster profile. |
 | global.nodeSelector | object | `{}` | Global pod node selector. |
 | global.tolerations | list | `[]` | Global pod tolerations. |
 | nameOverride | string | `""` | String to partially override release name. |

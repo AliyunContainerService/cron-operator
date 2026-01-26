@@ -335,3 +335,18 @@ tests:
   - equal:
       path: spec.template.spec.containers[?(@.name=='cron-operator')].volumeMounts[?(@.name=='volume-localtime')].mountPath
       value: /etc/localtime
+
+- it: Should set nodeSelector and tolerations for Edge cluster profile
+  set:
+    global:
+      clusterProfile: Edge
+  asserts:
+  - equal:
+      path: spec.template.spec.nodeSelector["alibabacloud.com/is-edge-worker"]
+      value: "false"
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: node-role.alibabacloud.com/addon
+        operator: Exists
+        effect: NoSchedule
