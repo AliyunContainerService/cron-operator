@@ -22,6 +22,8 @@
 global:
   # -- Global pod node selector.
   nodeSelector: {}
+  # -- Global pod tolerations.
+  tolerations: []
 
 # -- String to partially override release name.
 nameOverride: ""

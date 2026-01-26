@@ -227,6 +227,104 @@ tests:
                 - cron-operator
             topologyKey: kubernetes.io/hostname
 
+- it: Should set tolerations if `global.tolerations` is set
+  set:
+    global:
+      tolerations:
+      - key: key1
+        operator: Exists
+        effect: NoSchedule
+      - key: key2
+        operator: Equal
+        value: value2
+        effect: NoExecute
+  asserts:
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key1
+        operator: Exists
+        effect: NoSchedule
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key2
+        operator: Equal
+        value: value2
+        effect: NoExecute
+
+- it: Should set tolerations if `tolerations` is set
+  set:
+    tolerations:
+    - key: key1
+      operator: Exists
+      effect: NoSchedule
+    - key: key2
+      operator: Equal
+      value: value2
+      effect: NoExecute
+  asserts:
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key1
+        operator: Exists
+        effect: NoSchedule
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key2
+        operator: Equal
+        value: value2
+        effect: NoExecute
+
+- it: Should set tolerations if both `global.tolerations` and `tolerations` are set
+  set:
+    global:
+      tolerations:
+      - key: key1
+        operator: Exists
+        effect: NoSchedule
+      - key: key2
+        operator: Equal
+        value: value2
+        effect: NoExecute
+    tolerations:
+    - key: key3
+      operator: Exists
+      effect: NoSchedule
+    - key: key4
+      operator: Equal
+      value: value4
+      effect: NoExecute
+  asserts:
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key1
+        operator: Exists
+        effect: NoSchedule
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key2
+        operator: Equal
+        value: value2
+        effect: NoExecute
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key3
+        operator: Exists
+        effect: NoSchedule
+  - contains:
+      path: spec.template.spec.tolerations
+      content:
+        key: key4
+        operator: Equal
+        value: value4
+        effect: NoExecute
+
 - it: Should mount host localtime if `useHostTimezone` is true
   set:
     useHostTimezone: true

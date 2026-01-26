@@ -9,6 +9,7 @@ A Kubernetes operator that enables cron-based scheduling for machine learning tr
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | global.nodeSelector | object | `{}` | Global pod node selector. |
+| global.tolerations | list | `[]` | Global pod tolerations. |
 | nameOverride | string | `""` | String to partially override release name. |
 | fullnameOverride | string | `""` | String to fully override release name. |
 | image.registry | string | `"registry-cn-beijing.ack.aliyuncs.com"` | Image registry. |
