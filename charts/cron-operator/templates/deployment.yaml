@@ -102,9 +102,10 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- $tolerations := concat .Values.global.tolerations .Values.tolerations }}
+      {{- with $tolerations }}
       tolerations:
-        {{- toYaml . | nindent 8 }}
+      {{- toYaml . | nindent 6 }}
       {{- end }}
       serviceAccountName: {{ include "cron-operator.serviceAccount.name" . }}
       {{- with .Values.podSecurityContext }}
