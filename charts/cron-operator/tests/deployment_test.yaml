@@ -126,10 +126,83 @@ tests:
           cpu: 500m
           memory: 1Gi
 
-- it: Should set nodeSelector, affinity and tolerations
+- it: Should set node selector if `global.nodeSelector` is set
+  set:
+    global:
+      nodeSelector:
+        key1: value1
+        key2: value2
+  asserts:
+  - equal:
+      path: spec.template.spec.nodeSelector.key1
+      value: value1
+  - equal:
+      path: spec.template.spec.nodeSelector.key2
+      value: value2
+
+- it: Should set node selector if `nodeSelector` is set
   set:
     nodeSelector:
-      disktype: ssd
+      key1: value1
+      key2: value2
+  asserts:
+  - equal:
+      path: spec.template.spec.nodeSelector.key1
+      value: value1
+  - equal:
+      path: spec.template.spec.nodeSelector.key2
+      value: value2
+
+- it: Should set node selector if both `global.nodeSelector` and `nodeSelector` are set
+  set:
+    global:
+      nodeSelector:
+        key1: value1
+        key2: value2
+    nodeSelector:
+      key3: value3
+      key4: value4
+  asserts:
+  - equal:
+      path: spec.template.spec.nodeSelector.key1
+      value: value1
+  - equal:
+      path: spec.template.spec.nodeSelector.key2
+      value: value2
+  - equal:
+      path: spec.template.spec.nodeSelector.key3
+      value: value3
+  - equal:
+      path: spec.template.spec.nodeSelector.key4
+      value: value4
+
+- it: Should override global node selector if both `global.nodeSelector` and `nodeSelector` are set
+  set:
+    global:
+      nodeSelector:
+        key1: value1
+        key2: value2
+    nodeSelector:
+      key1: value1-override
+      key2: value2-override
+      key3: value3
+      key4: value4
+  asserts:
+  - equal:
+      path: spec.template.spec.nodeSelector.key1
+      value: value1-override
+  - equal:
+      path: spec.template.spec.nodeSelector.key2
+      value: value2-override
+  - equal:
+      path: spec.template.spec.nodeSelector.key3
+      value: value3
+  - equal:
+      path: spec.template.spec.nodeSelector.key4
+      value: value4
+
+- it: Should set affinity if `affinity` is set
+  set:
     affinity:
       podAntiAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -140,15 +213,7 @@ tests:
               values:
               - cron-operator
           topologyKey: kubernetes.io/hostname
-    tolerations:
-    - key: example-key
-      operator: Exists
-      effect: "NoSchedule"
   asserts:
-  - equal:
-      path: spec.template.spec.nodeSelector
-      value:
-        disktype: ssd
   - equal:
       path: spec.template.spec.affinity
       value:
@@ -161,12 +226,6 @@ tests:
                 values:
                 - cron-operator
             topologyKey: kubernetes.io/hostname
-  - equal:
-      path: spec.template.spec.tolerations
-      value:
-      - key: example-key
-        operator: Exists
-        effect: NoSchedule
 
 - it: Should mount host localtime if `useHostTimezone` is true
   set:
