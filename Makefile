@@ -5,14 +5,24 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# Version of cron-operator (e.g. `v1.2.3`).
+VERSION ?= $(shell cat VERSION)
+
 # Image registry (e.g. `docker.io`)
-IMAGE_REGISTRY ?= docker.io
+IMAGE_REGISTRY ?= registry-cn-beijing.ack.aliyuncs.com
 # Image repository (e.g. `my-repo/my-image`).
-IMAGE_REPOSITORY ?= cron-operator
-# Image tag (e.g. `latest`).
-IMAGE_TAG ?= latest
+IMAGE_REPOSITORY ?= acs/cron-operator
+# Image tag (e.g. `latest` or `1.2.3`).
+IMAGE_TAG ?= $(shell sed 's/^v//g' VERSION)
 # Image URL to use all building/pushing image targets
-IMAGE ?= $(IMAGE_REPOSITORY):$(IMAGE_TAG)
+IMAGE ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
+
+# Cron operator chart directory.
+CRON_OPERATOR_CHART ?= charts/cron-operator
+# Helm release name.
+RELEASE_NAME ?= cron-operator
+# Helm release namespace.
+RELEASE_NAMESPACE ?= cron-operator
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
@@ -44,6 +54,9 @@ all: build
 .PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+.PHONY: print-%
+print-%: ; @echo $*=$($*)
 
 ##@ Development
 
@@ -156,11 +169,26 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 
 .PHONY: helm-unittest
 helm-unittest: helm-unittest-plugin ## Run Helm chart unittests.
-	$(HELM) unittest charts/cron-operator --strict --file "tests/**/*_test.yaml"
+	$(HELM) unittest ${CRON_OPERATOR_CHART} --strict --file "tests/**/*_test.yaml"
 
 .PHONY: helm-docs
 helm-docs: helm-docs-plugin ## Generates markdown documentation for helm charts from requirements and values files.
 	$(HELM_DOCS) --sort-values-order=file
+
+.PHONY: helm-upgrade
+helm-upgrade: ## Upgrade cron-operator helm chart release (install if not exists).
+	$(HELM) upgrade $(RELEASE_NAME) $(CRON_OPERATOR_CHART) \
+	    --install \
+	    --namespace $(RELEASE_NAMESPACE) \
+	    --create-namespace \
+	    --wait \
+	    --set image.registry=${IMAGE_REGISTRY} \
+	    --set image.repository=${IMAGE_REPOSITORY} \
+	    --set image.tag=${IMAGE_TAG}
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall cron-operator helm chart release.
+	$(HELM) uninstall $(RELEASE_NAME) --namespace $(RELEASE_NAMESPACE)
 
 ##@ Deployment
 
@@ -170,11 +198,11 @@ endif
 
 .PHONY: install
 install: manifests ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUBECTL) apply --server-side -f charts/cron-operator/crds
+	$(KUBECTL) apply --server-side -f ${CRON_OPERATOR_CHART}/crds
 
 .PHONY: uninstall
 uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f charts/cron-operator/crds
+	$(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f ${CRON_OPERATOR_CHART}/crds
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
