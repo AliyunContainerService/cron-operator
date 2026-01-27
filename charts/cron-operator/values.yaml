@@ -80,7 +80,16 @@ resources:
     memory: 512Mi
 
 # -- Container security context.
-securityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 
 # -- Pod node selector.
 nodeSelector: {}

@@ -27,7 +27,7 @@ A Kubernetes operator that enables cron-based scheduling for machine learning tr
 | burst | int | `50` | Maximum burst for throttle. |
 | useHostTimezone | bool | `false` | Whether to use host timezone in the container. |
 | resources | object | `{"limits":{"cpu":"400m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}` | Container resources. |
-| securityContext | object | `{}` | Container security context. |
+| securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"privileged":false,"readOnlyRootFilesystem":true,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}}` | Container security context. |
 | nodeSelector | object | `{}` | Pod node selector. |
 | affinity | object | `{}` | Pod affinity. |
 | tolerations | list | `[]` | Pod tolerations. |
