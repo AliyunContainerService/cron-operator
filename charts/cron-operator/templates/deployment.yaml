@@ -60,6 +60,7 @@ spec:
         - --burst={{ . }}
         {{- end }}
         - --metrics-bind-address=:8080
+        - --metrics-secure=false
         ports:
         - name: metrics
           containerPort: 8080
