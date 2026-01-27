@@ -68,7 +68,7 @@ jobs:
         run: |
           make manifests generate
           git diff --exit-code
-      
+
       - name: Check Helm docs
         run: |
           make helm-docs
@@ -116,9 +116,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
-
       - name: Running e2e tests
         run: |
-          make test-e2e
+          make test-e2e IMAGE_TAG=latest KIND_KUBE_CONFIG=${HOME}/.kube/config
