@@ -33,17 +33,22 @@ import (
 	"github.com/AliyunContainerService/cron-operator/test/utils"
 )
 
-// namespace where the project is deployed in
-const namespace = "cron-operator-system"
+const (
+	// Name of Helm chart release.
+	name = "cron-operator"
 
-// serviceAccountName created for the project
-const serviceAccountName = "cron-operator-controller-manager"
+	// Namespace of Helm chart release.
+	namespace = "cron-operator"
 
-// metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "cron-operator-controller-manager-metrics-service"
+	// ServiceAccountName used by the cron-operator.
+	serviceAccountName = "cron-operator"
 
-// metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "cron-operator-metrics-binding"
+	// metricsServiceName is the name of the metrics service of the cron-operator.
+	metricsServiceName = "cron-operator"
+
+	// metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
+	metricsRoleBindingName = "cron-operator-metrics-binding"
+)
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -52,44 +57,50 @@ var _ = Describe("Manager", Ordered, func() {
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
-		By("creating manager namespace")
+		By(fmt.Sprintf("Creating namespace %s", namespace))
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
-		By("labeling the namespace to enforce the restricted security policy")
+		By(fmt.Sprintf("Labeling the namespace %s to enforce the restricted security policy", namespace))
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
 			"pod-security.kubernetes.io/enforce=restricted")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
-		By("installing CRDs")
-		cmd = exec.Command("make", "install")
+		By("Installing workload CRDs")
+		cmd = exec.Command("kubectl", "apply", "--server-side", "-f", "test/crds")
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+		Expect(err).NotTo(HaveOccurred(), "Failed to install workload CRDs")
 
-		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMAGE=%s", projectImage))
+		By("Installing cron-operator via Helm")
+		cmd = exec.Command("make", "helm-upgrade",
+			fmt.Sprintf("RELEASE_NAME=%s", name),
+			fmt.Sprintf("RELEASE_NAMESPACE=%s", namespace),
+		)
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager via helm")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
 	// and deleting the namespace.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace, "--ignore-not-found=true")
 		_, _ = utils.Run(cmd)
 
-		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
+		By("Uninstalling cron-operator via Helm")
+		cmd = exec.Command("make", "helm-uninstall",
+			fmt.Sprintf("RELEASE_NAME=%s", name),
+			fmt.Sprintf("RELEASE_NAMESPACE=%s", namespace),
+		)
 		_, _ = utils.Run(cmd)
 
-		By("uninstalling CRDs")
+		By("Uninstalling CRDs")
 		cmd = exec.Command("make", "uninstall")
 		_, _ = utils.Run(cmd)
 
-		By("removing manager namespace")
+		By(fmt.Sprintf("Deleting namespace %s", namespace))
 		cmd = exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
 	})
@@ -99,7 +110,7 @@ var _ = Describe("Manager", Ordered, func() {
 	AfterEach(func() {
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
-			By("Fetching controller manager pod logs")
+			By("Fetching cron-operator pod logs")
 			cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 			controllerLogs, err := utils.Run(cmd)
 			if err == nil {
@@ -145,13 +156,11 @@ var _ = Describe("Manager", Ordered, func() {
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func(g Gomega) {
 				// Get the name of the controller-manager pod
-				cmd := exec.Command("kubectl", "get",
-					"pods", "-l", "control-plane=controller-manager",
-					"-o", "go-template={{ range .items }}"+
-						"{{ if not .metadata.deletionTimestamp }}"+
-						"{{ .metadata.name }}"+
-						"{{ \"\\n\" }}{{ end }}{{ end }}",
+				cmd := exec.Command("kubectl", "get", "pods",
 					"-n", namespace,
+					"-l", "app.kubernetes.io/name=cron-operator",
+					"-o", "custom-columns=NAME:.metadata.name",
+					"--no-headers",
 				)
 
 				podOutput, err := utils.Run(cmd)
@@ -159,7 +168,7 @@ var _ = Describe("Manager", Ordered, func() {
 				podNames := utils.GetNonEmptyLines(podOutput)
 				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
 				controllerPodName = podNames[0]
-				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+				g.Expect(controllerPodName).To(ContainSubstring("cron-operator"))
 
 				// Validate the pod's status
 				cmd = exec.Command("kubectl", "get",
@@ -202,7 +211,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyControllerPodReady, 3*time.Minute, time.Second).Should(Succeed())
 
-			By("verifying that the controller manager is serving the metrics server")
+			By("Verifying that the controller manager is serving the metrics server")
 			verifyMetricsServerStarted := func(g Gomega) {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 				output, err := utils.Run(cmd)
@@ -225,7 +234,7 @@ var _ = Describe("Manager", Ordered, func() {
 							"name": "curl",
 							"image": "curlimages/curl:latest",
 							"command": ["/bin/sh", "-c"],
-							"args": ["curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
+							"args": ["curl -v -k -H 'Authorization: Bearer %s' http://%s.%s.svc.cluster.local:8080/metrics"],
 							"securityContext": {
 								"readOnlyRootFilesystem": true,
 								"allowPrivilegeEscalation": false,
