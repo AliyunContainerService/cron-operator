@@ -122,11 +122,11 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMAGE} .
+	$(CONTAINER_TOOL) build -t $(IMAGE) .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMAGE}
+	$(CONTAINER_TOOL) push $(IMAGE)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -141,21 +141,21 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name cron-operator-builder
 	$(CONTAINER_TOOL) buildx use cron-operator-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMAGE} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag $(IMAGE) -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm cron-operator-builder
 	rm Dockerfile.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMAGE}
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=$(IMAGE)
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
 ##@ Helm
 
 .PHONY: helm-unittest
 helm-unittest: helm helm-unittest-plugin ## Run Helm chart unittests.
-	$(HELM) unittest ${CRON_OPERATOR_CHART} --strict --file "tests/**/*_test.yaml"
+	$(HELM) unittest $(CRON_OPERATOR_CHART) --strict --file "tests/**/*_test.yaml"
 
 .PHONY: helm-docs
 helm-docs: helm helm-docs-plugin ## Generates markdown documentation for helm charts from requirements and values files.
@@ -168,9 +168,9 @@ helm-upgrade: helm ## Upgrade cron-operator helm chart release (install if not e
 	    --namespace $(RELEASE_NAMESPACE) \
 	    --create-namespace \
 	    --wait \
-	    --set image.registry=${IMAGE_REGISTRY} \
-	    --set image.repository=${IMAGE_REPOSITORY} \
-	    --set image.tag=${IMAGE_TAG}
+	    --set image.registry=$(IMAGE_REGISTRY) \
+	    --set image.repository=$(IMAGE_REPOSITORY) \
+	    --set image.tag=$(IMAGE_TAG)
 
 .PHONY: helm-uninstall
 helm-uninstall: helm ## Uninstall cron-operator helm chart release.
@@ -205,15 +205,15 @@ kind-delete-cluster: kind ## Delete the created kind cluster.
 
 .PHONY: install
 install: manifests ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUBECTL) apply --server-side -f ${CRON_OPERATOR_CHART}/crds
+	$(KUBECTL) apply --server-side -f $(CRON_OPERATOR_CHART)/crds
 
 .PHONY: uninstall
 uninstall: manifests ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f ${CRON_OPERATOR_CHART}/crds
+	$(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f $(CRON_OPERATOR_CHART)/crds
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMAGE}
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=$(IMAGE)
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
 
 .PHONY: undeploy
