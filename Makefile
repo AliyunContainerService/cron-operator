@@ -24,6 +24,11 @@ RELEASE_NAME ?= cron-operator
 # Helm release namespace.
 RELEASE_NAMESPACE ?= cron-operator
 
+# Kind cluster name.
+KIND_CLUSTER_NAME ?= cron-operator-e2e-test
+# Kube config file of Kind cluster.
+KIND_KUBE_CONFIG ?= $(HOME)/.kube/config-cron-operator-e2e-test
+
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
@@ -84,30 +89,11 @@ test: setup-envtest ## Run tests.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
-KIND_CLUSTER ?= cron-operator-test-e2e
-
-.PHONY: setup-test-e2e
-setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
-	@command -v $(KIND) >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@case "$$($(KIND) get clusters)" in \
-		*"$(KIND_CLUSTER)"*) \
-			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
-		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
-	esac
 
 .PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
-	$(MAKE) cleanup-test-e2e
-
-.PHONY: cleanup-test-e2e
-cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
-	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+test-e2e: manifests generate fmt vet kind-create-cluster ## Run the e2e tests. Expected an isolated environment using Kind.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) CERT_MANAGER_INSTALL_SKIP=true go test -tags=e2e ./test/e2e/ -v -ginkgo.v
+	$(MAKE) kind-delete-cluster
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -168,15 +154,15 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 ##@ Helm
 
 .PHONY: helm-unittest
-helm-unittest: helm-unittest-plugin ## Run Helm chart unittests.
+helm-unittest: helm helm-unittest-plugin ## Run Helm chart unittests.
 	$(HELM) unittest ${CRON_OPERATOR_CHART} --strict --file "tests/**/*_test.yaml"
 
 .PHONY: helm-docs
-helm-docs: helm-docs-plugin ## Generates markdown documentation for helm charts from requirements and values files.
+helm-docs: helm helm-docs-plugin ## Generates markdown documentation for helm charts from requirements and values files.
 	$(HELM_DOCS) --sort-values-order=file
 
 .PHONY: helm-upgrade
-helm-upgrade: ## Upgrade cron-operator helm chart release (install if not exists).
+helm-upgrade: helm ## Upgrade cron-operator helm chart release (install if not exists).
 	$(HELM) upgrade $(RELEASE_NAME) $(CRON_OPERATOR_CHART) \
 	    --install \
 	    --namespace $(RELEASE_NAMESPACE) \
@@ -187,7 +173,7 @@ helm-upgrade: ## Upgrade cron-operator helm chart release (install if not exists
 	    --set image.tag=${IMAGE_TAG}
 
 .PHONY: helm-uninstall
-helm-uninstall: ## Uninstall cron-operator helm chart release.
+helm-uninstall: helm ## Uninstall cron-operator helm chart release.
 	$(HELM) uninstall $(RELEASE_NAME) --namespace $(RELEASE_NAMESPACE)
 
 ##@ Deployment
@@ -195,6 +181,27 @@ helm-uninstall: ## Uninstall cron-operator helm chart release.
 ifndef ignore-not-found
   ignore-not-found = false
 endif
+
+.PHONY: kind-create-cluster
+kind-create-cluster: kind ## Create a kind cluster for e2e tests if it does not exist.
+	@case "$$($(KIND) get clusters)" in \
+		*"$(KIND_CLUSTER_NAME)"*) \
+			echo "Kind cluster '$(KIND_CLUSTER_NAME)' already exists. Skipping creation." ;; \
+		*) \
+			$(KIND) create cluster \
+			--name $(KIND_CLUSTER_NAME) \
+			--image kindest/node:$(KIND_K8S_VERSION) \
+			--kubeconfig $(KIND_KUBE_CONFIG) \
+			--wait=1m; \
+	esac
+
+.PHONY: kind-load-image
+kind-load-image: kind-create-cluster docker-build ## Load the image into the kind cluster.
+	$(KIND) load docker-image --name $(KIND_CLUSTER_NAME) $(IMAGE)
+
+.PHONY: kind-delete-cluster
+kind-delete-cluster: kind ## Delete the created kind cluster.
+	$(KIND) delete cluster --name $(KIND_CLUSTER_NAME) --kubeconfig $(KIND_KUBE_CONFIG)
 
 .PHONY: install
 install: manifests ## Install CRDs into the K8s cluster specified in ~/.kube/config.
@@ -222,7 +229,7 @@ $(LOCALBIN):
 
 ## Tool Binaries
 KUBECTL ?= kubectl
-KIND ?= kind
+KIND ?= $(LOCALBIN)/kind
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
@@ -233,6 +240,8 @@ HELM_DOCS ?= $(LOCALBIN)/helm-docs
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
+KIND_VERSION ?= v0.31.0
+KIND_K8S_VERSION ?= v1.34.0
 HELM_VERSION ?= v3.19.5
 HELM_UNITTEST_VERSION ?= 0.8.2
 HELM_DOCS_VERSION ?= v1.14.2
@@ -257,6 +266,11 @@ $(KUSTOMIZE): $(LOCALBIN)
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+
+.PHONY: kind
+kind: $(KIND) ## Download kind locally if necessary.
+$(KIND): $(LOCALBIN)
+	$(call go-install-tool,$(KIND),sigs.k8s.io/kind,$(KIND_VERSION))
 
 .PHONY: setup-envtest
 setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
