@@ -1,0 +1,4 @@
+resources:
+- v1alpha1/cron/cron-pytorch.yaml
+- v1alpha1/cron/cron-tf.yaml
+- v1alpha1/cron/cron-mpi.yaml

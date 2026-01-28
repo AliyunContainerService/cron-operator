@@ -1,0 +1,58 @@
+apiVersion: apps.kubedl.io/v1alpha1
+kind: Cron
+metadata:
+  name: cron-pytorch
+  labels:
+    app.kubernetes.io/name: cron-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  historyLimit: 3
+  template:
+    workload:
+      apiVersion: kubeflow.org/v1
+      kind: PyTorchJob
+      metadata:
+        labels:
+          key1: value1
+          key2: value2
+        annotations:
+          key1: value1
+          key2: value2
+      spec:
+        pytorchReplicaSpecs:
+          Master:
+            replicas: 1
+            restartPolicy: Never
+            template:
+              spec:
+                containers:
+                - name: pytorch
+                  image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/pytorch-mnist-example:2.5.1-cuda12.4-cudnn9-runtime
+                  imagePullPolicy: IfNotPresent
+                  command:
+                  - /bin/bash
+                  - -c
+                  args:
+                  - |
+                    echo "Master: Start training..."
+                    sleep 30
+                    echo "Master: Training completed."
+          Worker:
+            replicas: 2
+            restartPolicy: Never
+            template:
+              spec:
+                containers:
+                - name: pytorch
+                  image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/pytorch-mnist-example:2.5.1-cuda12.4-cudnn9-runtime
+                  imagePullPolicy: IfNotPresent
+                  command:
+                  - /bin/bash
+                  - -c
+                  args:
+                  - |
+                    echo "Worker: Start training..."
+                    sleep 30
+                    echo "Worker: Training completed."
