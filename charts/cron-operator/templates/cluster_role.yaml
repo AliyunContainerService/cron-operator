@@ -69,6 +69,7 @@ rules:
   resources:
   - pytorchjobs
   - tfjobs
+  - mpijobs
   verbs:
   - get
   - list
@@ -82,6 +83,7 @@ rules:
   resources:
   - pytorchjobs/status
   - tfjobs/status
+  - mpijobs/status
   verbs:
   - get
 - apiGroups:

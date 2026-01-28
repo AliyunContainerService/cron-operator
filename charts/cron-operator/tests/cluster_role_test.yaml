@@ -14,19 +14,17 @@
 # limitations under the License.
 #
 
-suite: Test RBAC
+suite: Test ClusterRole
 
 templates:
 - cluster_role.yaml
-- cluster_role_binding.yaml
 
 release:
   name: cron-operator
   namespace: cron-operator
 
 tests:
-- it: ClusterRole should have correct rules
-  template: cluster_role.yaml
+- it: should have correct rules
   asserts:
   - contains:
       path: rules
@@ -51,6 +49,7 @@ tests:
         resources:
         - pytorchjobs
         - tfjobs
+        - mpijobs
         verbs:
         - get
         - list
@@ -59,16 +58,3 @@ tests:
         - update
         - patch
         - delete
-
-- it: ClusterRoleBinding should link correct role and service account
-  template: cluster_role_binding.yaml
-  asserts:
-  - equal:
-      path: roleRef.name
-      value: cron-operator
-  - equal:
-      path: subjects[?(@.kind=='ServiceAccount')].name
-      value: cron-operator
-  - equal:
-      path: subjects[?(@.kind=='ServiceAccount')].namespace
-      value: cron-operator
