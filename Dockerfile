@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
-FROM registry-cn-hangzhou.ack.aliyuncs.com/dev/debian:12-slim-update
+FROM registry-cn-hangzhou.ack.aliyuncs.com/dev/debian:13-slim-update
 
 WORKDIR /
 
